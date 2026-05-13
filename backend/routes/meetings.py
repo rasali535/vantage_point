@@ -2,10 +2,12 @@ from fastapi import APIRouter, UploadFile, File, Depends
 from typing import List
 from database import get_database
 from agents.reasoning import ReasoningAgent
+from agents.transcription import SpeechmaticsAgent
 import uuid
 
 router = APIRouter()
-agent = ReasoningAgent()
+reasoning_agent = ReasoningAgent()
+transcription_agent = SpeechmaticsAgent()
 
 @router.get("/")
 async def list_meetings(db = Depends(get_database)):
@@ -34,7 +36,7 @@ async def process_meeting(transcript: str, title: str, db = Depends(get_database
         await db.meetings.insert_one(meeting)
     
     # 2. Run Reasoning Agent
-    analysis = await agent.analyze_meeting(transcript)
+    analysis = await reasoning_agent.analyze_meeting(transcript)
     
     # 3. Save Tasks
     tasks = []
@@ -69,11 +71,11 @@ async def upload_meeting(file: UploadFile = File(...), db = Depends(get_database
         content = await file.read()
         buffer.write(content)
     
-    # 2. Mock Transcription (In reality, call Speechmatics here)
-    mock_transcript = "This is a mock transcript of the uploaded meeting. We discussed the Acme Corp contract and agreed on the 99.99% SLA."
+    # 2. Real Transcription with Speechmatics
+    transcript = await transcription_agent.transcribe(file_path)
     
     # 3. Process with Agent
-    result = await process_meeting(transcript=mock_transcript, title=file.filename, db=db)
+    result = await process_meeting(transcript=transcript, title=file.filename, db=db)
     
     return {
         "meeting_id": result["meeting_id"],
