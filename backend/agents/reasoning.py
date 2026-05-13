@@ -67,21 +67,18 @@ class ReasoningAgent:
             elif self.featherless_api_key:
                 print("Using Featherless reasoning engine...")
                 raw_response = await self._analyze_with_featherless(prompt)
-            else:
+            elif os.getenv("GEMINI_API_KEY"):
                 print("Using Gemini reasoning engine...")
                 response = self.gemini_model.generate_content(prompt)
                 raw_response = response.text
             else:
                 print("Using Mock reasoning engine...")
                 return {
-                    "Key Decisions": ["Agreed on 99.99% SLA for Acme Corp", "Budget check assigned to Ops"],
-                    "Action Items": [
-                        {"task": "Check budget for enterprise cluster", "owner": "Charlie", "deadline": "Friday"},
-                        {"task": "Send follow-up SLA draft", "owner": "Alice", "deadline": "Friday"}
-                    ],
-                    "Risks and Blockers": ["Ops budget might exceed original quote"],
-                    "Overall Deal/Project Health": 85,
-                    "Confidence Score": 0.95
+                    "Deal Status Update": "Mock data: SLA agreed.",
+                    "Sales Objections": ["Price too high"],
+                    "Action Items": [{"task": "Follow up", "owner": "Alice", "deadline": "Friday"}],
+                    "Risk Assessment": "Budget check pending",
+                    "Deal Health Score": 85
                 }
 
             # Clean JSON response

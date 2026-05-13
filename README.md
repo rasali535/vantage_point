@@ -1,72 +1,83 @@
-# 🚀 ActionPilot: Autonomous RevenueOps Agent
+# 🚀 ActionPilot: The Multimodal Autonomous RevenueOps Agent
 
-ActionPilot is a domain-specialized autonomous agent designed for **Revenue Operations**. It automates the transition from sales conversations to CRM execution, ensuring pipeline hygiene and deal acceleration without manual overhead.
+ActionPilot is a domain-specialized autonomous agent designed to bridge the gap between sales conversations and enterprise execution. Built for the modern Revenue Operations (RevOps) team, it automates CRM hygiene, deal acceleration, and autonomous asset management.
 
-## 🧠 Google DeepMind Challenge: Gemini-Powered Reasoning
-ActionPilot leverages **Gemini 1.5 Flash** as its core multimodal orchestration engine:
-- **Multimodal Understanding**: Gemini analyzes both meeting transcripts and uploaded visual context (CRM screenshots, contracts, or handwritten notes) to form a unified deal perspective.
-- **Autonomous Workflows**: Gemini decides and executes next steps (task creation, deal status updates, risk flagging) based on multimodal inputs.
-- **Advanced Reasoning**: Optimized for low-latency, high-accuracy RevenueOps analysis.
+---
 
-## 🐙 Kraken Challenge: Autonomous xStocks Trading
-ActionPilot now includes an autonomous trading agent for **xStocks** (tokenized U.S. equities):
-- **Execution Layer**: Uses the **Kraken CLI** to execute trades programmatically.
-- **Strategy**: Uses **Featherless (Llama 3)** to analyze market sentiment and price momentum.
-- **Asset Focus**: Automated trading of tokenized assets like `AAPLx`, `TSLAx`, and `NVDAx`.
-- **Dashboard**: Real-time trade log, PnL tracking, and portfolio rebalancing insights.
+## 🏆 Hackathon Challenge Alignments
 
-## ✨ Features
-- **Multimodal Ingestion**: Upload audio (MP3/WAV), CRM screenshots, or contract PDFs.
-- **Gemini Reasoning**: Powered by Google DeepMind's Gemini models, the agent extracts commitments, identifies risks, and plans follow-ups.
-- **Human-in-the-Loop**: Interactive workspace to approve/edit agentic tasks.
-- **Audit Trail**: Full transparency into the "Agent Reasoning" behind every decision.
-- **Manager Dashboard**: Daily digest of at-risk deals and pipeline trends.
+### 🧠 Google DeepMind Challenge
+**Multimodal Gemini 1.5 Flash Reasoning**
+- **Unified Context**: Gemini analyzes meeting transcripts alongside visual data (CRM screenshots, contracts, handwritten notes) to extract deep insights.
+- **Automated Workflows**: Gemini acts as the central orchestrator, autonomously generating action items, flagging risks, and updating deal stages.
+- **Low Latency**: Optimized for real-time responsiveness in enterprise environments.
+
+### 🐙 Kraken Challenge
+**Autonomous xStocks Trading Agent**
+- **Execution Layer**: Integrates with the **Kraken CLI** to execute trades for tokenized U.S. equities (xStocks).
+- **Strategy Engine**: Uses **Featherless (Llama 3)** to analyze market sentiment and momentum for assets like `AAPLx`, `TSLAx`, and `NVDAx`.
+- **Trading Dashboard**: Real-time telemetry for portfolio balance, execution logs, and PnL monitoring.
+
+### 🪶 Featherless Challenge
+**Domain-Specialized RevOps Intelligence**
+- **Expert Reasoning**: Utilizes **Llama-3-70B-Instruct** (via Featherless) for specialized sales objection handling and competitive intelligence.
+- **Async-First Pipeline**: Decoupled ingestion-to-execution pipeline (Speechmatics -> Featherless -> MongoDB).
+- **Open Source**: MIT-licensed, fully reproducible architecture.
+
+---
+
+## ✨ Key Features
+- **🎙 Multimodal Ingestion**: Upload audio recordings, CRM dashboard screenshots, or contract PDFs.
+- **🤖 Autonomous Decision Engine**: Gemini/Llama agents plan and execute next steps without manual intervention.
+- **📈 Autonomous Trading**: A background loop that manages a portfolio of xStocks using the Kraken CLI.
+- **👥 Human-in-the-Loop**: Interactive workspace to review, edit, and approve agentic actions before they hit the CRM.
+- **🔍 Agent Audit Trail**: Complete transparency into the reasoning and logs behind every autonomous decision.
+
+---
 
 ## 🛠 Tech Stack
-- **Frontend**: React, TypeScript, Lucide Icons, Glassmorphism CSS.
-- **Backend**: FastAPI, MongoDB (Motor), Google Gemini AI.
-- **Deployment**: Docker, Vultr (Optimized for GPU/Inference workloads).
+- **Frontend**: React, TypeScript, Lucide Icons, Vanilla CSS (Glassmorphism).
+- **Backend**: FastAPI, MongoDB (Motor), Uvicorn.
+- **AI Models**: Google Gemini 1.5 Flash (Multimodal), Llama-3-70B (Featherless).
+- **APIs**: Speechmatics (Transcription), Kraken CLI (Trading).
+- **Deployment**: Docker-ready, Vultr-optimized.
 
-## 🚀 Getting Started
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
 - Google Gemini API Key
-- MongoDB URI (Optional, falls back to mock mode)
+- Featherless API Key
+- Kraken API Key (linked to CLI)
 
-### Local Development
-1. **Frontend**:
+### Installation
+1. **Clone the repository**:
    ```bash
-   cd frontend
-   npm install
-   npm run dev
+   git clone https://github.com/rasali535/actionpilot.git
+   cd actionpilot
    ```
-2. **Backend**:
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate # or venv\Scripts\activate on Windows
-   pip install -r requirements.txt
-   python main.py
-   ```
-
-### Docker Deployment (Vultr Ready)
-1. Create a `.env` file in the root:
+2. **Configure Environment**:
+   Create a `.env` file in the root:
    ```env
-   GEMINI_API_KEY=your_key_here
+   GEMINI_API_KEY=your_key
+   FEATHERLESS_API_KEY=your_key
+   SPEECHMATICS_API_KEY=your_key
    MONGODB_URL=your_mongodb_uri
    ```
-2. Build and run:
+3. **Launch with Docker**:
    ```bash
    docker-compose up --build
    ```
 
-## 🎥 Walkthrough
-1. **Upload**: Drop a sales call recording into the "New Meeting" modal.
-2. **Observe**: Watch the agents process context and plan actions.
-3. **Approve**: Review the "Autonomous Actions" in the Meeting Workspace.
-4. **Audit**: Switch to the Audit Trail to see why the agent flagged a specific risk.
-5. **Export**: Click "Export Report" to get a clean summary of commitments.
+---
+
+## 🎥 Use Case: The Perfect Sales Hand-off
+1. **The Meeting**: Record a contract review session.
+2. **The Context**: Upload a screenshot of the prospect's current billing dashboard.
+3. **The Agent**: ActionPilot transcribes the audio, analyzes the screenshot via Gemini, flags a pricing mismatch risk, and drafts a follow-up email.
+4. **The Execution**: You approve the tasks, and the agent updates the CRM autonomously.
 
 ---
-Built for the **Vultr x Gemini Hackathon** by **Antigravity**.
+Built by **Antigravity** for the **Vultr x Gemini Hackathon**.
