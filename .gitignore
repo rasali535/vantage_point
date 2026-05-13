@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+dist/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
