@@ -23,20 +23,21 @@ async def list_meetings(db = Depends(get_database)):
     return meetings
 
 @router.post("/process")
-async def process_meeting(transcript: str, title: str, db = Depends(get_database)):
+async def process_meeting(transcript: str, title: str, image_path: str = None, db = Depends(get_database)):
     # 1. Save Meeting
     meeting_id = str(uuid.uuid4())
     meeting = {
         "id": meeting_id,
         "title": title,
         "status": "processing",
-        "transcript": transcript
+        "transcript": transcript,
+        "image_path": image_path
     }
     if db is not None:
         await db.meetings.insert_one(meeting)
     
-    # 2. Run Reasoning Agent
-    analysis = await reasoning_agent.analyze_meeting(transcript)
+    # 2. Run Multimodal Reasoning Agent (Gemini)
+    analysis = await reasoning_agent.analyze_multimodal(transcript, image_path=image_path)
     
     # 3. Save Tasks
     tasks = []
@@ -61,8 +62,8 @@ async def process_meeting(transcript: str, title: str, db = Depends(get_database
     return {"meeting_id": meeting_id, "analysis": analysis}
 
 @router.post("/upload")
-async def upload_meeting(file: UploadFile = File(...), db = Depends(get_database)):
-    # 1. Save File
+async def upload_meeting(file: UploadFile = File(...), context_image: UploadFile = File(None), db = Depends(get_database)):
+    # 1. Save Audio File
     file_id = str(uuid.uuid4())
     extension = file.filename.split(".")[-1]
     file_path = f"uploads/{file_id}.{extension}"
@@ -71,11 +72,21 @@ async def upload_meeting(file: UploadFile = File(...), db = Depends(get_database
         content = await file.read()
         buffer.write(content)
     
-    # 2. Real Transcription with Speechmatics
+    # 2. Save Context Image (Optional)
+    image_path = None
+    if context_image:
+        img_id = str(uuid.uuid4())
+        img_ext = context_image.filename.split(".")[-1]
+        image_path = f"uploads/{img_id}.{img_ext}"
+        with open(image_path, "wb") as buffer:
+            img_content = await context_image.read()
+            buffer.write(img_content)
+    
+    # 3. Real Transcription with Speechmatics
     transcript = await transcription_agent.transcribe(file_path)
     
-    # 3. Process with Agent
-    result = await process_meeting(transcript=transcript, title=file.filename, db=db)
+    # 4. Process with Agent (Gemini Multimodal)
+    result = await process_meeting(transcript=transcript, title=file.filename, image_path=image_path, db=db)
     
     return {
         "meeting_id": result["meeting_id"],

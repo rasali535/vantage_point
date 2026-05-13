@@ -2,6 +2,12 @@
 
 ActionPilot is a domain-specialized autonomous agent designed for **Revenue Operations**. It automates the transition from sales conversations to CRM execution, ensuring pipeline hygiene and deal acceleration without manual overhead.
 
+## 🧠 Google DeepMind Challenge: Gemini-Powered Reasoning
+ActionPilot leverages **Gemini 1.5 Flash** as its core multimodal orchestration engine:
+- **Multimodal Understanding**: Gemini analyzes both meeting transcripts and uploaded visual context (CRM screenshots, contracts, or handwritten notes) to form a unified deal perspective.
+- **Autonomous Workflows**: Gemini decides and executes next steps (task creation, deal status updates, risk flagging) based on multimodal inputs.
+- **Advanced Reasoning**: Optimized for low-latency, high-accuracy RevenueOps analysis.
+
 ## 🐙 Kraken Challenge: Autonomous xStocks Trading
 ActionPilot now includes an autonomous trading agent for **xStocks** (tokenized U.S. equities):
 - **Execution Layer**: Uses the **Kraken CLI** to execute trades programmatically.
@@ -10,8 +16,8 @@ ActionPilot now includes an autonomous trading agent for **xStocks** (tokenized 
 - **Dashboard**: Real-time trade log, PnL tracking, and portfolio rebalancing insights.
 
 ## ✨ Features
-- **Multimodal Ingestion**: Upload audio (MP3/WAV), notes, or PDFs.
-- **Autonomous Reasoning**: Powered by Google Gemini, the agent extracts commitments, identifies risks, and plans follow-ups.
+- **Multimodal Ingestion**: Upload audio (MP3/WAV), CRM screenshots, or contract PDFs.
+- **Gemini Reasoning**: Powered by Google DeepMind's Gemini models, the agent extracts commitments, identifies risks, and plans follow-ups.
 - **Human-in-the-Loop**: Interactive workspace to approve/edit agentic tasks.
 - **Audit Trail**: Full transparency into the "Agent Reasoning" behind every decision.
 - **Manager Dashboard**: Daily digest of at-risk deals and pipeline trends.

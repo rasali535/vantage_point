@@ -30,17 +30,18 @@ class ReasoningAgent:
             else:
                 raise Exception(f"Featherless Error: {response.text}")
 
-    async def analyze_meeting(self, transcript: str, context: str = "") -> Dict:
+    async def analyze_multimodal(self, transcript: str, image_path: str = None, context: str = "") -> Dict:
+        """Advanced Multimodal Reasoning using Gemini 1.5 Flash"""
         prompt = f"""
-        You are a specialized RevenueOps Agent. Analyze the following sales call transcript.
-        Your goal is to ensure pipeline hygiene and accelerate the deal.
+        You are a specialized RevenueOps Agent. 
+        Analyze the following sales call transcript and any attached visual context (like CRM screenshots or contracts).
         
         Return ONLY a JSON object with:
-        - "Deal Status Update": summary of current deal stage and progress
-        - "Sales Objections": list of objections raised by the prospect
-        - "Competitive Intel": any mention of competitors or market positioning
+        - "Deal Status Update": summary of current deal stage
+        - "Visual Insights": insights extracted from the attached image (if any)
+        - "Sales Objections": list of objections raised
         - "Action Items": list of {{"task": string, "owner": string, "deadline": string}}
-        - "Risk Assessment": high-level risks that could stall the deal
+        - "Risk Assessment": high-level risks
         - "Deal Health Score": number 0-100
         
         Transcript:
@@ -51,10 +52,22 @@ class ReasoningAgent:
         """
 
         try:
-            if self.featherless_api_key:
+            if image_path and os.path.exists(image_path):
+                print(f"Using Gemini Multimodal reasoning for image: {image_path}")
+                # Load image for Gemini
+                with open(image_path, "rb") as f:
+                    img_data = f.read()
+                
+                # Gemini Multimodal Call
+                response = self.gemini_model.generate_content([
+                    prompt,
+                    {"mime_type": "image/jpeg", "data": img_data}
+                ])
+                raw_response = response.text
+            elif self.featherless_api_key:
                 print("Using Featherless reasoning engine...")
                 raw_response = await self._analyze_with_featherless(prompt)
-            elif os.getenv("GEMINI_API_KEY"):
+            else:
                 print("Using Gemini reasoning engine...")
                 response = self.gemini_model.generate_content(prompt)
                 raw_response = response.text
