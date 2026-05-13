@@ -5,6 +5,7 @@ from typing import List, Optional
 import os
 
 import routes.meetings
+import routes.trading
 
 app = FastAPI(title="ActionPilot API")
 
@@ -18,6 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(routes.meetings.router, prefix="/api/meetings", tags=["Meetings"])
+app.include_router(routes.trading.router, prefix="/api/trading", tags=["Trading"])
 
 # Mock DB Models
 class Task(BaseModel):

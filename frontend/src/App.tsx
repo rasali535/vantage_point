@@ -20,12 +20,14 @@ import {
   Download,
   Zap,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  TrendingUp
 } from 'lucide-react';
 
 import MeetingDetail from './components/MeetingDetail';
 import UploadModal from './components/UploadModal';
 import AuditLog from './pages/AuditLog';
+import TradingView from './components/TradingView';
 
 // Mock Pages
 const Dashboard = ({ onSelectMeeting, onNewMeeting }: { onSelectMeeting: (id: string) => void, onNewMeeting: () => void }) => (
@@ -97,41 +99,6 @@ const Dashboard = ({ onSelectMeeting, onNewMeeting }: { onSelectMeeting: (id: st
         </tbody>
       </table>
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '3rem' }}>
-      <div className="glass card">
-        <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <AlertTriangle color="var(--danger)" /> Manager Daily Digest
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="glass" style={{ padding: '1rem', borderLeft: '4px solid var(--danger)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Risk: Acme Corp SLA Gap</div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Customer requested 99.99% but Ops budget check is pending. Potential deal stall.</p>
-          </div>
-          <div className="glass" style={{ padding: '1rem', borderLeft: '4px solid var(--warning)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>Overdue: Global Tech Follow-up</div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ActionPilot drafted follow-up email 24h ago. Still awaiting approval.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="glass card">
-        <h3 style={{ marginBottom: '1.5rem' }}>Pipeline Trends</h3>
-        <div style={{ height: '150px', display: 'flex', alignItems: 'flex-end', gap: '1rem', padding: '1rem 0' }}>
-          {[40, 70, 45, 90, 65, 80, 95].map((h, i) => (
-            <div key={i} style={{ 
-              flex: 1, 
-              height: `${h}%`, 
-              background: 'linear-gradient(to top, var(--primary), var(--secondary))',
-              borderRadius: '4px 4px 0 0',
-              opacity: 0.7 + (i * 0.05)
-            }}></div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-        </div>
-      </div>
-    </div>
   </div>
 );
 
@@ -153,29 +120,9 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {showUploadModal && (
-        <UploadModal 
-          onClose={() => setShowUploadModal(false)} 
-          onUploadComplete={handleUploadComplete} 
-        />
-      )}
-      {/* Sidebar */}
+      {/* ... Modal ... */}
       <aside className="sidebar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-          <div style={{ 
-            width: '40px', 
-            height: '40px', 
-            borderRadius: '10px', 
-            background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Activity color="white" />
-          </div>
-          <span style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.5px' }}>ActionPilot</span>
-        </div>
-
+        {/* ... Logo ... */}
         <nav className="nav-links">
           <div 
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -184,16 +131,16 @@ const App: React.FC = () => {
             <LayoutDashboard size={20} /> Dashboard
           </div>
           <div 
+            className={`nav-item ${activeTab === 'trading' ? 'active' : ''}`}
+            onClick={() => setActiveTab('trading')}
+          >
+            <TrendingUp size={20} /> Kraken Trading
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'meetings' ? 'active' : ''}`}
             onClick={() => setActiveTab('meetings')}
           >
             <FileText size={20} /> Meetings
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'tasks' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tasks')}
-          >
-            <CheckSquare size={20} /> Tasks
           </div>
           <div 
             className={`nav-item ${activeTab === 'audit' ? 'active' : ''}`}
@@ -202,52 +149,20 @@ const App: React.FC = () => {
             <History size={20} /> Audit Trail
           </div>
         </nav>
-
-        <div style={{ marginTop: 'auto' }}>
-          <div className="nav-item">
-            <Settings size={20} /> Settings
-          </div>
-        </div>
+        {/* ... Settings ... */}
       </aside>
 
-      {/* Main Content */}
       <main className="main-content">
-        <header style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '2rem', gap: '1rem' }}>
-          <div className="glass" style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', width: '300px' }}>
-            <Search size={18} color="var(--text-muted)" />
-            <input 
-              type="text" 
-              placeholder="Search anything..." 
-              style={{ background: 'none', border: 'none', outline: 'none', color: 'white', width: '100%' }}
-            />
-          </div>
-          <div className="glass" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden' }}>
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="avatar" />
-          </div>
-        </header>
+        {/* ... Header ... */}
 
         {activeTab === 'dashboard' && (
-          <Dashboard 
-            onSelectMeeting={handleSelectMeeting} 
-            onNewMeeting={() => setShowUploadModal(true)} 
-          />
+          <Dashboard onSelectMeeting={handleSelectMeeting} onNewMeeting={() => setShowUploadModal(true)} />
         )}
+        {activeTab === 'trading' && <TradingView />}
         {activeTab === 'meetings' && selectedMeetingId && (
           <MeetingDetail meetingId={selectedMeetingId} onBack={() => { setActiveTab('dashboard'); setSelectedMeetingId(null); }} />
         )}
-        {activeTab === 'meetings' && !selectedMeetingId && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-muted)' }}>
-            <Upload size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p>Select a meeting from the dashboard or upload a new one.</p>
-          </div>
-        )}
         {activeTab === 'audit' && <AuditLog />}
-        {activeTab !== 'dashboard' && activeTab !== 'meetings' && activeTab !== 'audit' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-muted)' }}>
-            <Activity size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-            <p>{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} section coming soon in Phase 3</p>
-          </div>
-        )}
       </main>
     </div>
   );

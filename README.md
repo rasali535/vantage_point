@@ -2,12 +2,12 @@
 
 ActionPilot is a domain-specialized autonomous agent designed for **Revenue Operations**. It automates the transition from sales conversations to CRM execution, ensuring pipeline hygiene and deal acceleration without manual overhead.
 
-## 🪶 Featherless Challenge Alignment
-This project is built for the **Featherless Challenge**, focusing on:
-- **Domain Specialization**: Tailored specifically for RevenueOps and Sales Enablement.
-- **Async-First Architecture**: Features a background processing pipeline (Speechmatics -> Featherless -> MongoDB) for autonomous task execution.
-- **Featherless Native**: Uses high-performance models (Llama 3 70B) from the Featherless catalog for specialized reasoning.
-- **Open Source**: Licensed under MIT, fully reproducible.
+## 🐙 Kraken Challenge: Autonomous xStocks Trading
+ActionPilot now includes an autonomous trading agent for **xStocks** (tokenized U.S. equities):
+- **Execution Layer**: Uses the **Kraken CLI** to execute trades programmatically.
+- **Strategy**: Uses **Featherless (Llama 3)** to analyze market sentiment and price momentum.
+- **Asset Focus**: Automated trading of tokenized assets like `AAPLx`, `TSLAx`, and `NVDAx`.
+- **Dashboard**: Real-time trade log, PnL tracking, and portfolio rebalancing insights.
 
 ## ✨ Features
 - **Multimodal Ingestion**: Upload audio (MP3/WAV), notes, or PDFs.
