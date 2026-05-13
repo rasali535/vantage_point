@@ -120,6 +120,36 @@ const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
 
         {/* Right Column: AI Analysis */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* RevenueOps Insights */}
+          <div className="glass card">
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <ShieldCheck size={20} color="var(--primary)" /> RevenueOps Insights
+            </h3>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Sales Objections</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {(meeting.analysis["Sales Objections"] || ["None detected"]).map((obj, i) => (
+                  <span key={i} className="badge badge-warning" style={{ fontSize: '0.75rem' }}>{obj}</span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Competitive Intel</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                {meeting.analysis["Competitive Intel"] || "No competitors mentioned."}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Risk Assessment</div>
+              <div style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 500 }}>
+                {meeting.analysis["Risk Assessment"] || "Low risk."}
+              </div>
+            </div>
+          </div>
+
           {/* Action Items */}
           <div className="glass card">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -151,22 +181,15 @@ const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyItems: 'center', fontSize: '0.7rem', color: 'white', justifyContent: 'center' }}>{c.owner[0]}</div>
-                      {c.owner}
+                      <span>{c.owner}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button className="btn" style={{ padding: '0.3rem', background: 'var(--surface-light)' }}><MoreHorizontal size={14} /></button>
-                    </div>
+                    <button className="btn" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: 'var(--surface-light)' }}><Mail size={14} /></button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Blockers */}
-          <div className="glass card" style={{ borderLeft: '4px solid var(--danger)' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--danger)' }}>
-              <AlertTriangle size={20} /> Risks & Blockers
-            </h3>
             {meeting.analysis.blockers.map((b, i) => (
               <div key={i} style={{ fontSize: '0.95rem', color: 'var(--text)' }}>• {b}</div>
             ))}

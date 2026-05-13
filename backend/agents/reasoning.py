@@ -32,18 +32,21 @@ class ReasoningAgent:
 
     async def analyze_meeting(self, transcript: str, context: str = "") -> Dict:
         prompt = f"""
-        Analyze the following meeting transcript and context.
+        You are a specialized RevenueOps Agent. Analyze the following sales call transcript.
+        Your goal is to ensure pipeline hygiene and accelerate the deal.
+        
         Return ONLY a JSON object with:
-        - "Key Decisions": list of strings
+        - "Deal Status Update": summary of current deal stage and progress
+        - "Sales Objections": list of objections raised by the prospect
+        - "Competitive Intel": any mention of competitors or market positioning
         - "Action Items": list of {{"task": string, "owner": string, "deadline": string}}
-        - "Risks and Blockers": list of strings
-        - "Overall Deal/Project Health": number 0-100
-        - "Confidence Score": number 0.0-1.0
+        - "Risk Assessment": high-level risks that could stall the deal
+        - "Deal Health Score": number 0-100
         
         Transcript:
         {transcript}
         
-        Additional Context:
+        CRM Context:
         {context}
         """
 

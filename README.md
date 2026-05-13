@@ -1,6 +1,13 @@
 # 🚀 ActionPilot: Autonomous RevenueOps Agent
 
-ActionPilot is an autonomous enterprise execution agent that turns sales calls, meeting recordings, and documents into immediate business results. Instead of just summarizing, it decides, executes, and escalates.
+ActionPilot is a domain-specialized autonomous agent designed for **Revenue Operations**. It automates the transition from sales conversations to CRM execution, ensuring pipeline hygiene and deal acceleration without manual overhead.
+
+## 🪶 Featherless Challenge Alignment
+This project is built for the **Featherless Challenge**, focusing on:
+- **Domain Specialization**: Tailored specifically for RevenueOps and Sales Enablement.
+- **Async-First Architecture**: Features a background processing pipeline (Speechmatics -> Featherless -> MongoDB) for autonomous task execution.
+- **Featherless Native**: Uses high-performance models (Llama 3 70B) from the Featherless catalog for specialized reasoning.
+- **Open Source**: Licensed under MIT, fully reproducible.
 
 ## ✨ Features
 - **Multimodal Ingestion**: Upload audio (MP3/WAV), notes, or PDFs.
