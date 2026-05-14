@@ -13,7 +13,6 @@ class KrakenAgent:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             return json.loads(result.stdout)
         except Exception as e:
-            print(f"Kraken CLI Error: {e}")
             # Mock data for demo if CLI is not installed or errors
             return {"error": str(e), "mock": True}
 

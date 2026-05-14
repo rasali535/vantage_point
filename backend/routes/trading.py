@@ -5,8 +5,22 @@ from agents.reasoning import ReasoningAgent
 import asyncio
 
 router = APIRouter()
-kraken_agent = KrakenAgent()
-reasoning_agent = ReasoningAgent()
+
+# Lazy load agents for Vercel stability
+_kraken_agent = None
+_reasoning_agent = None
+
+def get_kraken_agent():
+    global _kraken_agent
+    if _kraken_agent is None:
+        _kraken_agent = KrakenAgent()
+    return _kraken_agent
+
+def get_reasoning_agent():
+    global _reasoning_agent
+    if _reasoning_agent is None:
+        _reasoning_agent = ReasoningAgent()
+    return _reasoning_agent
 
 # Track active trades for the dashboard
 trades_history = [
@@ -16,7 +30,8 @@ trades_history = [
 
 @router.get("/status")
 async def get_trading_status():
-    balance = await kraken_agent.get_balance()
+    k_agent = get_kraken_agent()
+    balance = await k_agent.get_balance()
     return {
         "balance": balance,
         "history": trades_history[-10:],
@@ -31,13 +46,13 @@ async def scan_and_trade():
     results = []
     
     for symbol in symbols:
-        # 1. Get Market Data
-        data = await kraken_agent.get_price(symbol)
-        
         # 2. Form Strategy (Use Featherless for complex analysis)
-        # In a real scenario, we'd feed technical indicators here
+        k_agent = get_kraken_agent()
+        r_agent = get_reasoning_agent()
+        data = await k_agent.get_price(symbol)
+        
         prompt = f"Analyze the momentum for {symbol} at price {data.get('price')}. Return a momentum score 0-100 and a recommendation (buy/sell/hold)."
-        analysis = await reasoning_agent.analyze_meeting(prompt) # Re-using the reasoning agent's interface
+        analysis = await r_agent.analyze_multimodal(prompt) 
         
         score = analysis.get("Deal Health Score", 50) # Mapping health score to momentum
         recommendation = "hold"
@@ -47,7 +62,7 @@ async def scan_and_trade():
         # 3. Execute Trade
         trade_res = None
         if recommendation != "hold":
-            trade_res = await kraken_agent.execute_trade(symbol, recommendation, 1.0)
+            trade_res = await k_agent.execute_trade(symbol, recommendation, 1.0)
             trades_history.append({
                 "id": str(len(trades_history) + 1),
                 "symbol": symbol,
