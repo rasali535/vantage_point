@@ -1,83 +1,86 @@
-# 🚀 ActionPilot: The Multimodal Autonomous RevenueOps Agent
+# 🌌 Vantage-Point 2.0: Float-as-a-Service (FaaS)
 
-ActionPilot is a domain-specialized autonomous agent designed to bridge the gap between sales conversations and enterprise execution. Built for the modern Revenue Operations (RevOps) team, it automates CRM hygiene, deal acceleration, and autonomous asset management.
+**Vantage-Point 2.0** is an autonomous treasury engine designed for SMBs and DAOs to capture yield on idle cash. By transforming incoming invoices, payroll, and tax obligations into "Float Events," Vantage-Point leverages a multi-agent **Boardroom Council** to autonomously decide and execute yield-capture strategies via tokenized U.S. equities (xStocks).
+
+---
+
+## 🏛 The Boardroom Council
+Vantage-Point doesn't just "process" data; it deliberates. Every financial event is analyzed by a specialized council of AI agents:
+
+- **🦁 The CEO (Gemini 1.5 Flash)**: Sets the vision and makes the final execution call.
+- **⚖️ General Counsel (Llama 3.1)**: Audits for regulatory compliance and contractual risk.
+- **📉 Risk Officer (Llama 3.1)**: Evaluates market volatility and liquidity constraints.
+- **🌍 Macro Strategist (Gemini 1.5 Flash)**: Ingests global news and sentiment to time entries.
 
 ---
 
 ## 🏆 Hackathon Challenge Alignments
 
-### 🧠 Google DeepMind Challenge
-**Multimodal Gemini 1.5 Flash Reasoning**
-- **Unified Context**: Gemini analyzes meeting transcripts alongside visual data (CRM screenshots, contracts, handwritten notes) to extract deep insights.
-- **Automated Workflows**: Gemini acts as the central orchestrator, autonomously generating action items, flagging risks, and updating deal stages.
-- **Low Latency**: Optimized for real-time responsiveness in enterprise environments.
+### 🧠 Google DeepMind Challenge: Multimodal Orchestration
+- **Gemini 1.5 Flash** acts as the Council's chair, ingesting multimodal context (Invoice PDFs, payroll spreadsheets, and CRM screenshots) to form a unified treasury strategy.
+- **Glass-Box Reasoning**: Every decision is logged in the **Reasoning Path Ledger**, providing full transparency into the AI's "thought process."
 
-### 🐙 Kraken Challenge
-**Autonomous xStocks Trading Agent**
-- **Execution Layer**: Integrates with the **Kraken CLI** to execute trades for tokenized U.S. equities (xStocks).
-- **Strategy Engine**: Uses **Featherless (Llama 3)** to analyze market sentiment and momentum for assets like `AAPLx`, `TSLAx`, and `NVDAx`.
-- **Trading Dashboard**: Real-time telemetry for portfolio balance, execution logs, and PnL monitoring.
+### 🐙 Kraken Challenge: Autonomous Yield Execution
+- **Kraken CLI Integration**: Once the Council approves a strategy (e.g., "Yield Capture via AAPLx"), the system executes trades directly on the **Kraken xStocks** platform.
+- **Yield-Optimization Loop**: Background agents monitor "Time-to-Payment" for invoices and cycle idle capital through tokenized assets until the cash is needed.
 
-### 🪶 Featherless Challenge
-**Domain-Specialized RevOps Intelligence**
-- **Expert Reasoning**: Utilizes **Llama-3-70B-Instruct** (via Featherless) for specialized sales objection handling and competitive intelligence.
-- **Async-First Pipeline**: Decoupled ingestion-to-execution pipeline (Speechmatics -> Featherless -> MongoDB).
-- **Open Source**: MIT-licensed, fully reproducible architecture.
+### 🪶 Featherless Challenge: Risk-Adjusted Intelligence
+- **Llama-3-70B (via Featherless)**: Powers the high-stakes "Risk Officer" and "General Counsel" agents, providing specialized legal and financial auditing that requires deep reasoning and strict instruction following.
 
 ---
 
 ## ✨ Key Features
-- **🎙 Multimodal Ingestion**: Upload audio recordings, CRM dashboard screenshots, or contract PDFs.
-- **🤖 Autonomous Decision Engine**: Gemini/Llama agents plan and execute next steps without manual intervention.
-- **📈 Autonomous Trading**: A background loop that manages a portfolio of xStocks using the Kraken CLI.
-- **👥 Human-in-the-Loop**: Interactive workspace to review, edit, and approve agentic actions before they hit the CRM.
-- **🔍 Agent Audit Trail**: Complete transparency into the reasoning and logs behind every autonomous decision.
+- **🎙 Multimodal Ingestion**: Process Treasury Events via voice memos, PDF invoices, or dashboard screenshots.
+- **📜 Reasoning Path Ledger**: A "SOX-ready" audit trail that cryptographically anchors every Council decision.
+- **📈 Equinox Score**: A real-time metric measuring treasury efficiency and captured yield.
+- **🛡 Defensive Failover**: Robust architecture that gracefully enters "Mock Mode" if database or API connectivity is lost, ensuring the terminal never goes dark.
 
 ---
 
 ## 🛠 Tech Stack
-- **Frontend**: React, TypeScript, Lucide Icons, Vanilla CSS (Glassmorphism).
+- **Frontend**: React + Vite, TypeScript, Lucide React (Premium Glassmorphism).
 - **Backend**: FastAPI, MongoDB (Motor), Uvicorn.
-- **AI Models**: Google Gemini 1.5 Flash (Multimodal), Llama-3-70B (Featherless).
-- **APIs**: Speechmatics (Transcription), Kraken CLI (Trading).
-- **Deployment**: Docker-ready, Vultr-optimized.
+- **AI Orchestration**: Google Gemini 1.5 Flash & Llama-3-70B (Featherless).
+- **Yield Layer**: Kraken CLI (xStocks).
+- **Deployment**: Vercel-optimized (Serverless + Lazy-loading Agents).
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
 - Google Gemini API Key
 - Featherless API Key
-- Kraken API Key (linked to CLI)
+- Speechmatics API Key (for transcription)
+- MongoDB Atlas Cluster (Optional, fallback to Mock Mode included)
 
 ### Installation
-1. **Clone the repository**:
+1. **Clone & Setup**:
    ```bash
    git clone https://github.com/rasali535/actionpilot.git
    cd actionpilot
    ```
-2. **Configure Environment**:
+2. **Environment Variables**:
    Create a `.env` file in the root:
    ```env
-   GEMINI_API_KEY=your_key
-   FEATHERLESS_API_KEY=your_key
-   SPEECHMATICS_API_KEY=your_key
-   MONGODB_URL=your_mongodb_uri
+   GEMINI_API_KEY=your_gemini_key
+   FEATHERLESS_API_KEY=your_featherless_key
+   SPEECHMATICS_API_KEY=your_speechmatics_key
+   MONGODB_URL=your_atlas_uri
    ```
-3. **Launch with Docker**:
+3. **Launch Backend**:
    ```bash
-   docker-compose up --build
+   cd backend
+   pip install -r requirements.txt
+   python main.py
+   ```
+4. **Launch Frontend**:
+   ```bash
+   cd ../frontend
+   npm install
+   npm run dev
    ```
 
 ---
 
-## 🎥 Use Case: The Perfect Sales Hand-off
-1. **The Meeting**: Record a contract review session.
-2. **The Context**: Upload a screenshot of the prospect's current billing dashboard.
-3. **The Agent**: ActionPilot transcribes the audio, analyzes the screenshot via Gemini, flags a pricing mismatch risk, and drafts a follow-up email.
-4. **The Execution**: You approve the tasks, and the agent updates the CRM autonomously.
-
----
-Built by **Antigravity** for the **Vultr x Gemini Hackathon**.
+Built with precision by **Antigravity** for the **Vultr x Gemini Hackathon**.
