@@ -4,23 +4,10 @@ import {
   FileText, 
   CheckSquare, 
   History, 
-  Settings, 
-  Upload, 
   Plus, 
-  Search,
   MoreVertical,
   Activity,
   AlertCircle,
-  AlertTriangle,
-  ArrowLeft,
-  Clock,
-  User,
-  MessageSquare,
-  Play,
-  Download,
-  Zap,
-  Mail,
-  ShieldCheck,
   TrendingUp
 } from 'lucide-react';
 
@@ -120,7 +107,12 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* ... Modal ... */}
+      {showUploadModal && (
+        <UploadModal 
+          onClose={() => setShowUploadModal(false)} 
+          onUploadComplete={handleUploadComplete} 
+        />
+      )}
       <aside className="sidebar">
         {/* ... Logo ... */}
         <nav className="nav-links">

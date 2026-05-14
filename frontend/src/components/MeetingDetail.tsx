@@ -20,8 +20,21 @@ interface MeetingDetailProps {
 
 const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
   // Mock data for the meeting
-  const meeting = {
-    title: "Acme Corp Contract Review",
+  const meeting: {
+    title: string;
+    date: string;
+    duration: string;
+    health: number;
+    status: string;
+    transcript: { speaker: string; text: string }[];
+    analysis: {
+      decisions: string[];
+      blockers: string[];
+      commitments: { id: number; owner: string; task: string; deadline: string; completed: boolean }[];
+      [key: string]: any; // Allow dynamic indexing for Sales Objections, etc.
+    };
+  } = {
+    title: `Acme Corp Contract Review (${meetingId})`,
     date: "May 13, 2026",
     duration: "45 min",
     health: 85,
@@ -45,7 +58,10 @@ const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
       commitments: [
         { id: 1, owner: "Charlie", task: "Check budget for enterprise cluster migration", deadline: "Friday, May 15", completed: false },
         { id: 2, owner: "Alice", task: "Send follow-up email with updated SLA draft", deadline: "After budget check", completed: false }
-      ]
+      ],
+      "Sales Objections": ["SLA Guarantee", "Infrastructure Cost"],
+      "Competitive Intel": "Client mentioned 'CloudScale' as an alternative.",
+      "Risk Assessment": "High risk if SLA isn't met by Friday."
     }
   };
 
@@ -129,7 +145,7 @@ const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Sales Objections</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {(meeting.analysis["Sales Objections"] || ["None detected"]).map((obj, i) => (
+                {(meeting.analysis["Sales Objections"] || ["None detected"]).map((obj: string, i: number) => (
                   <span key={i} className="badge badge-warning" style={{ fontSize: '0.75rem' }}>{obj}</span>
                 ))}
               </div>

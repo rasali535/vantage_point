@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Activity, ShoppingCart, RefreshCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, DollarSign, Activity, ShoppingCart, RefreshCcw } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 const TradingView = () => {

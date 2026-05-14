@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, FileAudio, FileText, CheckCircle, Loader2 } from 'lucide-react';
+import { Upload, X, CheckCircle, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
 

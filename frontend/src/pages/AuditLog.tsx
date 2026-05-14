@@ -1,7 +1,6 @@
-import React from 'react';
-import { History, Zap, Mail, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
-const AuditLog: React.FC = () => {
+const AuditLog = () => {
   const logs = [
     { 
       id: 1, 
