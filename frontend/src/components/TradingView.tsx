@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Activity, ShoppingCart, RefreshCcw } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 const TradingView = () => {
   const [status, setStatus] = useState<any>(null);
@@ -13,7 +14,7 @@ const TradingView = () => {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/trading/status');
+      const res = await fetch(`${API_BASE_URL}/api/trading/status`);
       const data = await res.json();
       setStatus(data);
     } catch (err) {
@@ -24,7 +25,7 @@ const TradingView = () => {
   const runScanner = async () => {
     setScanning(true);
     try {
-      await fetch('http://localhost:8000/api/trading/scan', { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
       await fetchStatus();
     } catch (err) {
       console.error(err);
