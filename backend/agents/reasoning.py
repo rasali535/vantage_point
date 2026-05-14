@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import os
 import json
-import httpx
+from openai import OpenAI
 from typing import Dict, List
 
 # Configure Gemini
@@ -11,24 +11,26 @@ class ReasoningAgent:
     def __init__(self, model_name="gemini-1.5-flash"):
         self.gemini_model = genai.GenerativeModel(model_name)
         self.featherless_api_key = os.getenv("FEATHERLESS_API_KEY")
-        self.featherless_url = "https://api.featherless.ai/v1/chat/completions"
+        if self.featherless_api_key:
+            self.featherless_client = OpenAI(
+                base_url="https://api.featherless.ai/v1",
+                api_key=self.featherless_api_key
+            )
 
     async def _analyze_with_featherless(self, prompt: str) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.featherless_api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "meta-llama/Meta-Llama-3-70B-Instruct",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1
-        }
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.featherless_url, headers=headers, json=payload, timeout=60.0)
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
-            else:
-                raise Exception(f"Featherless Error: {response.text}")
+        try:
+            response = self.featherless_client.chat.completions.create(
+                model="meta-llama/Meta-Llama-3.1-70B-Instruct", # Updated to a more common model
+                messages=[
+                    {"role": "system", "content": "You are a specialized RevenueOps Agent. Extract insights as JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Featherless SDK Error: {e}")
+            raise e
 
     async def analyze_multimodal(self, transcript: str, image_path: str = None, context: str = "") -> Dict:
         """Advanced Multimodal Reasoning using Gemini 1.5 Flash"""
