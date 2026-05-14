@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, FileAudio, FileText, CheckCircle, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config';
 
 interface UploadModalProps {
   onClose: () => void;
@@ -42,7 +43,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
       formData.append('file', file);
       
       // Call actual backend
-      const response = await axios.post('http://localhost:8000/api/meetings/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/meetings/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
