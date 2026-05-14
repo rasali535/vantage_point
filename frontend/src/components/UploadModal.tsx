@@ -80,7 +80,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
     }}>
       <div className="glass card animate-fade-in" style={{ width: '500px', padding: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <h2>Upload Meeting</h2>
+          <h2>Process Invoice / Contract</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={24} />
           </button>
@@ -110,10 +110,10 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
             />
             <Upload size={48} color="var(--primary)" style={{ marginBottom: '1rem' }} />
             <p style={{ fontWeight: 500, marginBottom: '0.5rem' }}>
-              {file ? file.name : "Click or drag files to upload"}
+              {file ? file.name : "Click or drag invoice (PDF) to ingest"}
             </p>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              Supports Audio, Video, and PDFs
+              Supports PDF invoices, Service Agreements, and Vendor Contracts
             </p>
           </div>
         )}
@@ -133,9 +133,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
                 {progress}%
               </div>
             </div>
-            <h3>{step === 'upload' ? 'Uploading files...' : 'ActionPilot is analyzing...'}</h3>
+            <h3>{step === 'upload' ? 'Ingesting data...' : 'Boardroom Council is deliberating...'}</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-              {step === 'upload' ? "Sending meeting context to Vultr..." : "Extracting decisions and action items with Gemini..."}
+              {step === 'upload' ? "Securing file context on encrypted server..." : "General Counsel auditing for late fees & Risk Officer computing liquidation path..."}
             </p>
           </div>
         )}
@@ -143,9 +143,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
         {step === 'done' && (
           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
             <CheckCircle size={64} color="var(--success)" style={{ marginBottom: '1.5rem' }} />
-            <h3>Processing Complete</h3>
+            <h3>Analysis Finalized</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-              Redirecting to workspace...
+              Yield strategy anchored to ledger. Redirecting...
             </p>
           </div>
         )}
@@ -164,7 +164,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadComplete }) 
             disabled={!file || isUploading}
             onClick={handleUpload}
           >
-            {isUploading ? "Processing..." : "Start Agent Analysis"}
+            {isUploading ? "Deliberating..." : "Initiate Ingestion"}
           </button>
         </div>
       </div>

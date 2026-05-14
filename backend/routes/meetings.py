@@ -13,11 +13,12 @@ transcription_agent = SpeechmaticsAgent()
 async def list_meetings(db = Depends(get_database)):
     if db is None:
         return [
-            {"id": "1", "title": "Acme Corp Contract Review", "date": "2026-05-13", "status": "completed"},
-            {"id": "2", "title": "Global Tech Partnership", "date": "2026-05-12", "status": "pending_approval"}
+            {"id": "1", "title": "Inbound Invoice: AWS-99283", "date": "2026-05-13", "status": "completed", "type": "invoice", "yield_bps": 2.4, "strategy": "Sell TSLAx"},
+            {"id": "2", "title": "Weekly Payroll Disbursement", "date": "2026-05-12", "status": "pending_approval", "type": "payroll", "yield_bps": 0.0, "strategy": "Delay ACH"},
+            {"id": "3", "title": "Tax-Loss Harvesting: Q2 Batch", "date": "2026-05-11", "status": "completed", "type": "tax", "yield_bps": 12.8, "strategy": "Swap BTCx"},
+            {"id": "4", "title": "Tokenized Bond Yield Capture", "date": "2026-05-10", "status": "completed", "type": "bond", "yield_bps": 4.5, "strategy": "Compound Ondo"}
         ]
     meetings = await db.meetings.find().to_list(100)
-    # Convert ObjectId to str for JSON serialization
     for m in meetings:
         m["id"] = str(m.pop("_id"))
     return meetings
