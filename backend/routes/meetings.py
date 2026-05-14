@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Depends
+import os
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from typing import List
 from database import get_database
 from agents.reasoning import ReasoningAgent
@@ -64,10 +65,15 @@ async def process_meeting(transcript: str, title: str, image_path: str = None, d
 
 @router.post("/upload")
 async def upload_meeting(file: UploadFile = File(...), context_image: UploadFile = File(None), db = Depends(get_database)):
-    # 1. Save Audio File
     file_id = str(uuid.uuid4())
     extension = file.filename.split(".")[-1]
-    file_path = f"uploads/{file_id}.{extension}"
+    
+    # Use /tmp for serverless environments (Vercel)
+    upload_dir = "/tmp" if os.environ.get("VERCEL") else "uploads"
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+        
+    file_path = os.path.join(upload_dir, f"{file_id}.{extension}")
     
     with open(file_path, "wb") as buffer:
         content = await file.read()
@@ -78,20 +84,26 @@ async def upload_meeting(file: UploadFile = File(...), context_image: UploadFile
     if context_image:
         img_id = str(uuid.uuid4())
         img_ext = context_image.filename.split(".")[-1]
-        image_path = f"uploads/{img_id}.{img_ext}"
+        image_path = os.path.join(upload_dir, f"{img_id}.{img_ext}")
         with open(image_path, "wb") as buffer:
             img_content = await context_image.read()
             buffer.write(img_content)
     
-    # 3. Real Transcription with Speechmatics
-    transcript = await transcription_agent.transcribe(file_path)
-    
-    # 4. Process with Agent (Gemini Multimodal)
-    result = await process_meeting(transcript=transcript, title=file.filename, image_path=image_path, db=db)
-    
-    return {
-        "meeting_id": result["meeting_id"],
-        "filename": file.filename,
-        "status": "processed",
-        "analysis": result["analysis"]
-    }
+    try:
+        # 3. Real Transcription with Speechmatics
+        transcript = await transcription_agent.transcribe(file_path)
+        
+        # 4. Process with Agent (Gemini Multimodal)
+        result = await process_meeting(transcript=transcript, title=file.filename, image_path=image_path, db=db)
+        
+        return {
+            "meeting_id": result["meeting_id"],
+            "filename": file.filename,
+            "status": "processed",
+            "analysis": result["analysis"]
+        }
+    except Exception as e:
+        print(f"ERROR in upload_meeting: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
