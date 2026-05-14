@@ -6,6 +6,7 @@ import os
 
 import routes.meetings
 import routes.trading
+import routes.chat
 
 app = FastAPI(title="ActionPilot API")
 
@@ -20,6 +21,7 @@ app.add_middleware(
 
 app.include_router(routes.meetings.router, prefix="/api/meetings", tags=["Meetings"])
 app.include_router(routes.trading.router, prefix="/api/trading", tags=["Trading"])
+app.include_router(routes.chat.router, prefix="/api/chat", tags=["Chat"])
 
 # Mock DB Models
 class Task(BaseModel):

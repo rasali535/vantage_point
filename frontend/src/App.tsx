@@ -15,6 +15,7 @@ import MeetingDetail from './components/MeetingDetail';
 import UploadModal from './components/UploadModal';
 import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
+import ChatBot from './components/ChatBot';
 
 // Mock Pages
 const Dashboard = ({ onSelectMeeting, onNewMeeting }: { onSelectMeeting: (id: string) => void, onNewMeeting: () => void }) => (
@@ -113,6 +114,7 @@ const App: React.FC = () => {
           onUploadComplete={handleUploadComplete} 
         />
       )}
+      <ChatBot />
       <aside className="sidebar">
         {/* ... Logo ... */}
         <nav className="nav-links">
