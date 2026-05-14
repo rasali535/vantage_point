@@ -8,7 +8,7 @@ import {
   AlertTriangle, 
   User, 
   Clock,
-  MoreHorizontal,
+  ShieldCheck,
   Mail,
   Copy
 } from 'lucide-react';
@@ -189,9 +189,13 @@ const MeetingDetail: React.FC<MeetingDetailProps> = ({ meetingId, onBack }) => {
               ))}
             </div>
           </div>
-
+          {/* Blockers */}
+          <div className="glass card">
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <AlertTriangle size={20} color="var(--danger)" /> Key Blockers
+            </h3>
             {meeting.analysis.blockers.map((b, i) => (
-              <div key={i} style={{ fontSize: '0.95rem', color: 'var(--text)' }}>• {b}</div>
+              <div key={i} style={{ fontSize: '0.95rem', color: 'var(--text)', marginBottom: '0.5rem' }}>• {b}</div>
             ))}
           </div>
 
