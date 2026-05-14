@@ -43,11 +43,11 @@ class SpeechmaticsAgent:
                 
                 job_id = response.json()["id"]
                 
-                # 2. Poll (Max 30s for demo responsiveness)
-                for _ in range(6):
-                    await asyncio.sleep(5)
+                # 2. Poll (Max 8s for Vercel Hobby responsiveness)
+                for _ in range(2):
+                    await asyncio.sleep(3)
                     status_resp = await client.get(f"{self.base_url}/jobs/{job_id}", headers=headers)
-                    if status_resp.json()["job"]["status"] == "done":
+                    if status_resp.status_code == 200 and status_resp.json()["job"]["status"] == "done":
                         transcript_resp = await client.get(f"{self.base_url}/jobs/{job_id}/transcript?format=txt", headers=headers)
                         return transcript_resp.text
                 

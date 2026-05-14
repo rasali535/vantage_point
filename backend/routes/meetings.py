@@ -7,8 +7,22 @@ from agents.transcription import SpeechmaticsAgent
 import uuid
 
 router = APIRouter()
-reasoning_agent = ReasoningAgent()
-transcription_agent = SpeechmaticsAgent()
+
+# Lazy load agents to prevent startup crashes on Vercel
+_reasoning_agent = None
+_transcription_agent = None
+
+def get_reasoning_agent():
+    global _reasoning_agent
+    if _reasoning_agent is None:
+        _reasoning_agent = ReasoningAgent()
+    return _reasoning_agent
+
+def get_transcription_agent():
+    global _transcription_agent
+    if _transcription_agent is None:
+        _transcription_agent = SpeechmaticsAgent()
+    return _transcription_agent
 
 @router.get("/")
 async def list_meetings(db = Depends(get_database)):
@@ -39,7 +53,8 @@ async def process_meeting(transcript: str, title: str, image_path: str = None, d
         await db.meetings.insert_one(meeting)
     
     # 2. Run Multimodal Reasoning Agent (Gemini)
-    analysis = await reasoning_agent.analyze_multimodal(transcript, image_path=image_path)
+    agent = get_reasoning_agent()
+    analysis = await agent.analyze_multimodal(transcript, image_path=image_path)
     
     # 3. Save Tasks
     tasks = []
@@ -91,7 +106,8 @@ async def upload_meeting(file: UploadFile = File(...), context_image: UploadFile
     
     try:
         # 3. Real Transcription with Speechmatics
-        transcript = await transcription_agent.transcribe(file_path)
+        t_agent = get_transcription_agent()
+        transcript = await t_agent.transcribe(file_path)
         
         # 4. Process with Agent (Gemini Multimodal)
         result = await process_meeting(transcript=transcript, title=file.filename, image_path=image_path, db=db)
