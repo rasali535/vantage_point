@@ -57,10 +57,20 @@ class KrakenAgent:
         res = self._run(["ticker", pair])
         if res.get("mock"):
             import random
-            price = round(random.uniform(70000, 80000), 2)
+            if "AAPL" in pair:
+                price = round(random.uniform(170, 230), 2)
+                vol = 1200000
+            elif "BTC" in pair:
+                price = round(random.uniform(60000, 90000), 2)
+                vol = 1200
+            else:
+                price = round(random.uniform(100, 500), 2)
+                vol = 5000
+                
             return {
-                "pair": pair, "ask": price + 5, "bid": price - 5, "last": price,
-                "high_24h": price + 500, "low_24h": price - 500, "volume_24h": 1200, "open": price - 100
+                "pair": pair, "ask": price + 0.05, "bid": price - 0.05, "last": price,
+                "high_24h": price + 2.5, "low_24h": price - 2.5, "volume_24h": vol, "open": price - 1.2,
+                "change_percent": round(random.uniform(-2, 2), 2)
             }
         
         raw = res.get(pair, {})
@@ -79,8 +89,19 @@ class KrakenAgent:
         res = self._run(["ohlc", pair, "--interval", str(interval)])
         if res.get("mock"):
             import time
+            import random
             now = int(time.time())
-            return [{"timestamp": now - (i * 3600), "open": 75000, "high": 76000, "low": 74000, "close": 75500, "volume": 100} for i in range(12)]
+            price_base = 180 if "AAPL" in pair else 75000
+            return [
+                {
+                    "timestamp": now - (i * 3600), 
+                    "open": price_base + random.uniform(-2, 2), 
+                    "high": price_base + random.uniform(2, 5), 
+                    "low": price_base - random.uniform(2, 5), 
+                    "close": price_base + random.uniform(-1, 1), 
+                    "volume": 1000 if "AAPL" in pair else 10
+                } for i in range(12)
+            ]
         
         candles = res.get(pair, []) if isinstance(res, dict) else res
         return [

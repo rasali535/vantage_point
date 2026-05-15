@@ -11,8 +11,8 @@ class BoardroomCouncil:
     def __init__(self):
         self.research_model = os.getenv("RESEARCH_MODEL", "Qwen/Qwen2.5-72B-Instruct")
         self.trading_model = os.getenv("TRADING_MODEL", "deepseek-ai/DeepSeek-V3")
-        # We'll try to pull Gemini 1.5 via Featherless if it's available, else fallback to direct
-        self.ceo_model = "google/gemini-1.5-pro" 
+        # Use the trading model or fallback for the CEO role
+        self.ceo_model = self.trading_model
 
     async def get_gc_opinion(self, market_data: str) -> str:
         """General Counsel: DeepSeek-V3 specializes in risk and logical audit."""

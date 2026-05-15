@@ -27,7 +27,7 @@ const BoardroomCouncil = ({ decision }: CouncilProps) => {
         {/* CEO Synthesis */}
         <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', borderLeft: '4px solid var(--primary)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase' }}>
-            <User size={14} /> CEO (Gemini 1.5 Pro)
+            <User size={14} /> CEO (Featherless Orchestrator)
           </div>
           <div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>
             {decision.reasoning}
@@ -38,7 +38,7 @@ const BoardroomCouncil = ({ decision }: CouncilProps) => {
           {/* GC Opinion */}
           <div style={{ padding: '1rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>
-              <Shield size={14} /> GC (Claude 3.5)
+              <Shield size={14} /> Risk (DeepSeek)
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               Audit confirms trade complies with treasury risk thresholds. Scoring risk at {decision.risk_score}/100.
