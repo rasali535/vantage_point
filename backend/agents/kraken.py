@@ -26,14 +26,9 @@ class KrakenAgent:
             )
             stdout, stderr = await process.communicate()
             if process.returncode != 0:
-                print(f"CLI Error: {stderr.decode()}")
                 return ""
             return stdout.decode().strip()
-        except FileNotFoundError:
-            print("⚠️ Kraken CLI not found. Falling back to Mock Engine.")
-            return ""
-        except Exception as e:
-            print(f"Execution Error: {e}")
+        except Exception:
             return ""
 
     def _run(self, args: List[str]) -> Dict:
@@ -42,11 +37,14 @@ class KrakenAgent:
             if self.api_key: env["KRAKEN_API_KEY"] = self.api_key
             if self.api_secret: env["KRAKEN_API_SECRET"] = self.api_secret
             
-            cmd = [self.kraken_path] + args + ["--output", "json"]
+            # Ensure JSON output for machine parsing
+            if "-o" not in args and "--output" not in args:
+                args = args + ["-o", "json"]
+                
+            cmd = [self.kraken_path] + args
             result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             
             if result.returncode != 0:
-                # Silently return error for mock fallback
                 return {"error": result.stderr.strip(), "mock": True}
             
             return json.loads(result.stdout)
@@ -54,35 +52,35 @@ class KrakenAgent:
             return {"error": str(e), "mock": True}
 
     async def get_ticker(self, pair: str) -> Dict:
-        res = self._run(["ticker", pair])
+        # Use tokenized_asset class for xStocks by default
+        args = ["ticker", pair]
+        if "x/" in pair or self.asset_class == "tokenized_asset":
+            args.extend(["--asset-class", "tokenized_asset"])
+            
+        res = self._run(args)
         if res.get("mock"):
             import random
-            if "AAPL" in pair:
-                price = round(random.uniform(170, 230), 2)
-                vol = 1200000
-            elif "BTC" in pair:
-                price = round(random.uniform(60000, 90000), 2)
-                vol = 1200
-            else:
-                price = round(random.uniform(100, 500), 2)
-                vol = 5000
-                
+            price = round(random.uniform(170, 230), 2)
             return {
                 "pair": pair, "ask": price + 0.05, "bid": price - 0.05, "last": price,
-                "high_24h": price + 2.5, "low_24h": price - 2.5, "volume_24h": vol, "open": price - 1.2,
+                "high_24h": price + 2.5, "low_24h": price - 2.5, "volume_24h": 1200000, "open": price - 1.2,
                 "change_percent": round(random.uniform(-2, 2), 2)
             }
         
+        # Kraken CLI returns data keyed by the pair name
         raw = res.get(pair, {})
+        if not raw and res: # Fallback if key differs
+            raw = list(res.values())[0] if isinstance(res, dict) and res else {}
+
         return {
             "pair": pair,
-            "ask": raw.get("a", [None])[0],
-            "bid": raw.get("b", [None])[0],
-            "last": raw.get("c", [None])[0],
-            "high_24h": (raw.get("h") or [None, None])[1],
-            "low_24h": (raw.get("l") or [None, None])[1],
-            "volume_24h": (raw.get("v") or [None, None])[1],
-            "open": raw.get("o"),
+            "ask": float(raw.get("a", [0])[0]),
+            "bid": float(raw.get("b", [0])[0]),
+            "last": float(raw.get("c", [0])[0]),
+            "high_24h": float((raw.get("h") or [0, 0])[1]),
+            "low_24h": float((raw.get("l") or [0, 0])[1]),
+            "volume_24h": float((raw.get("v") or [0, 0])[1]),
+            "open": float(raw.get("o") or 0),
         }
 
     async def get_ohlc(self, pair: str, interval: int = 60) -> List[Dict]:

@@ -21,7 +21,7 @@ class FeatherlessAgent:
         if not self.api_key or "rc_" not in self.api_key:
             return "Consensus: Strategy maintains current trajectory. (Key missing)"
         """Calls the Featherless API using the OpenAI-compatible endpoint."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             payload = {
                 "model": model,
                 "messages": [

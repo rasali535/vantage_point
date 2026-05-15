@@ -28,11 +28,16 @@ const TradingView = () => {
     setScanning(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}...`);
+      }
       const data = await res.json();
       setLastDecision(data.decision);
       await fetchStatus();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Scan Error:', err);
+      alert(`Deliberation Timeout: The Boardroom Council is still debating (or Featherless is under high load). \n\nDetails: ${err.message}`);
     }
     setScanning(false);
   };

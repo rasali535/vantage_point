@@ -1,19 +1,84 @@
-version: '3.8'
-
 services:
+  mongodb:
+    image: mongo:7.0
+    container_name: actionpilot-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+    healthcheck:
+      test: mongosh --eval 'db.adminCommand("ping")'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - actionpilot
+
   backend:
     build: ./backend
+    container_name: actionpilot-api
     ports:
       - "8000:8000"
+    env_file: .env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          memory: 512M
+    networks:
+      - actionpilot
     environment:
-      - MONGODB_URL=${MONGODB_URL}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-    volumes:
-      - ./backend/uploads:/app/uploads
+      - MONGODB_URL=mongodb://mongodb:27017/actionpilot
 
   frontend:
     build: ./frontend
+    container_name: actionpilot-web
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - actionpilot
+
+volumes:
+  mongo-data:
+
+networks:
+  actionpilot:
+    driver: bridge
