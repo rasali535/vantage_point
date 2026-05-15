@@ -16,7 +16,7 @@ class MultimodalAgent:
         
         if self.gemini_key and "your_gemini" not in self.gemini_key:
             genai.configure(api_key=self.gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+            self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
         else:
             self.gemini_model = None
 

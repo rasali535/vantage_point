@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Final stage
 FROM python:3.14-slim
 
-# Copy Python site-packages from builder
+# Copy Python site-packages and bin from builder
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 WORKDIR /app
 COPY . .

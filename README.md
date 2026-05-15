@@ -1,85 +1,85 @@
-# 🌌 Vantage-Point 2.0: Float-as-a-Service (FaaS)
+# 🌌 Vantage-Point 2.0: Autonomous Enterprise Treasury
 
-**Vantage-Point 2.0** is an autonomous treasury engine designed for SMBs and DAOs to capture yield on idle cash. By transforming incoming invoices, payroll, and tax obligations into "Float Events," Vantage-Point leverages a multi-agent **Boardroom Council** to autonomously decide and execute yield-capture strategies via tokenized U.S. equities (xStocks).
-
----
-
-## 🏛 The Boardroom Council
-Vantage-Point doesn't just "process" data; it deliberates. Every financial event is analyzed by a specialized council of AI agents:
-
-- **🦁 The CEO (Gemini 1.5 Flash)**: Sets the vision and makes the final execution call.
-- **⚖️ General Counsel (Llama 3.1)**: Audits for regulatory compliance and contractual risk.
-- **📉 Risk Officer (Llama 3.1)**: Evaluates market volatility and liquidity constraints.
-- **🌍 Macro Strategist (Gemini 1.5 Flash)**: Ingests global news and sentiment to time entries.
+**Vantage-Point 2.0** is an AI-native autonomous treasury engine built for the **Vultr x Gemini Hackathon**. It solves the "$1.2 Trillion SMB Cash Drag" by transforming idle corporate capital into yield-bearing assets through an agentic boardroom orchestration.
 
 ---
 
-## 🏆 Hackathon Challenge Alignments
+## 🏛 The Multi-Agent Architecture
 
-### 🧠 Google DeepMind Challenge: Multimodal Orchestration
-- **Gemini 1.5 Flash** acts as the Council's chair, ingesting multimodal context (Invoice PDFs, payroll spreadsheets, and CRM screenshots) to form a unified treasury strategy.
-- **Glass-Box Reasoning**: Every decision is logged in the **Reasoning Path Ledger**, providing full transparency into the AI's "thought process."
+Vantage-Point uses a **"Council of Experts"** approach to financial decision-making, ensuring every trade is audited for risk and compliance before execution.
 
-### 🐙 Kraken Challenge: Autonomous Yield Execution
-- **Kraken CLI Integration**: Once the Council approves a strategy (e.g., "Yield Capture via AAPLx"), the system executes trades directly on the **Kraken xStocks** platform.
-- **Yield-Optimization Loop**: Background agents monitor "Time-to-Payment" for invoices and cycle idle capital through tokenized assets until the cash is needed.
+```mermaid
+graph TD
+    A[Financial Event: Invoice/Payroll] --> B{Boardroom Council}
+    B --> C[🦁 CEO: Gemini 1.5 Flash]
+    B --> D[⚖️ General Counsel: DeepSeek-V3]
+    B --> E[📉 Risk Officer: Qwen-2.5-72B]
+    C -->|Synthesis| F[Decision: BUY/SELL/HOLD]
+    F -->|Execution| G[Kraken CLI: xStocks Layer]
+    G --> H[Vantage Portfolio Dashboard]
+    D -.->|Compliance Audit| C
+    E -.->|Volatility Check| C
+```
 
-### 🪶 Featherless Challenge: Risk-Adjusted Intelligence
-- **Llama-3-70B (via Featherless)**: Powers the high-stakes "Risk Officer" and "General Counsel" agents, providing specialized legal and financial auditing that requires deep reasoning and strict instruction following.
+### 🧠 Open-Source LLM Integration (via Featherless)
+
+To meet the challenge of "realistic future-of-work use cases," we leverage specialized open-source models:
+
+- **DeepSeek-V3**: Powers the **General Counsel** for strict logical auditing and compliance verification.
+- **Qwen-2.5-72B**: Powers the **Macro Strategist**, providing deep contextual reasoning on market volatility.
+
+---
+
+## 🏆 Vultr Hackathon Specializations
+
+### ☁️ Vultr-Native Deployment
+
+- **Containerized Excellence**: The entire stack (Backend, Frontend, MongoDB) is containerized for seamless deployment to **Vultr Cloud Compute** instances.
+- **Performance Optimized**: Leverages Vultr's high-speed CPU performance to run the **Kraken CLI** natively inside the backend container.
+
+### 🐙 Kraken xStocks Integration
+
+Vantage-Point is built specifically for the **Kraken CLI**, enabling autonomous trading of tokenized U.S. equities (xStocks) directly from a corporate treasury dashboard.
+
+### 🎭 Multimodal Ingestion
+
+Ingests real-world enterprise documents (Invoices, Tax Forms) using **Gemini 1.5 Flash**, converting static liabilities into active "Float Events."
 
 ---
 
 ## ✨ Key Features
-- **🎙 Multimodal Ingestion**: Process Treasury Events via voice memos, PDF invoices, or dashboard screenshots.
-- **📜 Reasoning Path Ledger**: A "SOX-ready" audit trail that cryptographically anchors every Council decision.
-- **📈 Equinox Score**: A real-time metric measuring treasury efficiency and captured yield.
-- **🛡 Defensive Failover**: Robust architecture that gracefully enters "Mock Mode" if database or API connectivity is lost, ensuring the terminal never goes dark.
+
+- **📜 Glass-Box Reasoning**: A "SOX-ready" audit trail for every AI decision.
+- **📈 Equinox Score**: Real-time treasury efficiency metric.
+- **🛡️ Defensive Failover**: Resilient architecture with 120s timeouts for complex reasoning.
+- **🎨 Premium Aesthetics**: A state-of-the-art glassmorphism UI designed for executive oversight.
 
 ---
 
 ## 🛠 Tech Stack
-- **Frontend**: React + Vite, TypeScript, Lucide React (Premium Glassmorphism).
-- **Backend**: FastAPI, MongoDB (Motor), Uvicorn.
-- **AI Orchestration**: Google Gemini 1.5 Flash & Llama-3-70B (Featherless).
-- **Yield Layer**: Kraken CLI (xStocks).
-- **Deployment**: Vercel-optimized (Serverless + Lazy-loading Agents).
+
+- **AI**: Gemini 1.5 Flash, DeepSeek-V3, Qwen-2.5-72B.
+- **Backend**: FastAPI, MongoDB, Kraken CLI v0.3.2.
+- **Frontend**: React (Vite), TypeScript, Nginx.
+- **Infrastructure**: Docker, Docker Compose, Vultr Cloud.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Deployment (Vultr)
 
-### Prerequisites
-- Google Gemini API Key
-- Featherless API Key
-- Speechmatics API Key (for transcription)
-- MongoDB Atlas Cluster (Optional, fallback to Mock Mode included)
+### 1-Line Provisioning
 
-### Installation
-1. **Clone & Setup**:
-   ```bash
-   git clone https://github.com/rasali535/actionpilot.git
-   cd actionpilot
-   ```
-2. **Environment Variables**:
-   Create a `.env` file in the root:
-   ```env
-   GEMINI_API_KEY=your_gemini_key
-   FEATHERLESS_API_KEY=your_featherless_key
-   SPEECHMATICS_API_KEY=your_speechmatics_key
-   MONGODB_URL=your_atlas_uri
-   ```
-3. **Launch Backend**:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python main.py
-   ```
-4. **Launch Frontend**:
-   ```bash
-   cd ../frontend
-   npm install
-   npm run dev
-   ```
+On a fresh Vultr Ubuntu instance:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/rasali535/vantage_point/main/vultr-init.sh | sudo bash
+```
+
+### Manual Setup
+
+1. **Clone**: `git clone https://github.com/rasali535/vantage_point.git`
+2. **Configure**: Fill in `.env` with API keys.
+3. **Launch**: `docker-compose up --build -d`
 
 ---
 
