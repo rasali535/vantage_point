@@ -1,40 +1,32 @@
-import { ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShieldCheck, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 const AuditLog = () => {
-  const logs = [
-    { 
-      id: 1, 
-      time: "10:45 AM", 
-      agent: "Reasoning Agent", 
-      action: "Extracted Commitments", 
-      reasoning: "Detected verbal confirmation from Bob: 'We need 99.99% uptime'. Assigned as high-priority commitment.",
-      status: "success" 
-    },
-    { 
-      id: 2, 
-      time: "10:46 AM", 
-      agent: "Decision Agent", 
-      action: "Created Follow-up Task", 
-      reasoning: "Confidence score 94%. Meeting owner Alice committed to sending SLA draft. Created task with deadline Friday.",
-      status: "success" 
-    },
-    { 
-      id: 3, 
-      time: "10:46 AM", 
-      agent: "Execution Agent", 
-      action: "Drafted Email", 
-      reasoning: "Generated draft based on decisions: move to enterprise cluster and 99.99% SLA. Saved for approval.",
-      status: "pending_approval" 
-    },
-    { 
-      id: 4, 
-      time: "10:47 AM", 
-      agent: "Context Agent", 
-      action: "Flagged Risk", 
-      reasoning: "Budget concerns raised by Charlie. Detected 'budget might be a blocker'. Escalated to Manager dashboard.",
-      status: "warning" 
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLogs();
+  }, []);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/trading/audit`);
+      const data = await res.json();
+      setLogs(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+      <Loader2 className="animate-spin" size={32} />
+    </div>
+  );
 
   return (
     <div className="animate-fade-in">
@@ -45,7 +37,7 @@ const AuditLog = () => {
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)' }}></div> Success
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)' }}></div> Escalated
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--warning)' }}></div> Warning
           </span>
         </div>
       </div>
@@ -62,7 +54,7 @@ const AuditLog = () => {
         }}></div>
 
         {logs.map((log) => (
-          <div key={log.id} style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
+          <div key={log.id || log._id} style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
             <div style={{ 
               position: 'absolute', 
               left: '-2rem', 
@@ -79,7 +71,9 @@ const AuditLog = () => {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
                     <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{log.agent}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{log.time}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                      {log.time || new Date(log.timestamp).toLocaleTimeString()}
+                    </span>
                   </div>
                   <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{log.action}</h3>
                 </div>
