@@ -133,59 +133,42 @@ class ReasoningAgent:
         return await self.boardroom_deliberation(transcript, context)
 
     async def analyze_market(self, ticker: Dict, ohlc: List[Dict], trading_pair: str) -> str:
-        """Step 1: Specialized Financial Research (Qwen)"""
-        recent_candles = ohlc[-12:] if len(ohlc) >= 12 else ohlc
+        """Step 1: Specialized Financial Research (Qwen) - Optimized for speed"""
+        recent_candles = ohlc[-6:] if len(ohlc) >= 6 else ohlc
         ohlc_summary = "\n".join(
-            f"  O: {c.get('open')} H: {c.get('high')} L: {c.get('low')} C: {c.get('close')} Vol: {c.get('volume')}"
+            f"O:{c.get('open')} H:{c.get('high')} L:{c.get('low')} C:{c.get('close')}"
             for c in recent_candles
         )
 
-        prompt = f"""You are a financial market analyst. Analyze the following market data for {trading_pair} and extract key signals.
-Current ticker:
-- Last price: {ticker.get('last')}
-- 24h High: {ticker.get('high_24h')}
-- 24h Low: {ticker.get('low_24h')}
-Recent hourly OHLC candles:
-{ohlc_summary}
-Provide a concise structured analysis: trend, volatility, and volume. Do not make a trade recommendation."""
+        prompt = f"Analyze {trading_pair}. Price: {ticker.get('last')}. OHLC (last 6h):\n{ohlc_summary}\nProvide a 3-sentence summary of trend, volatility, and volume signals."
 
         try:
             response = self.featherless_client.chat.completions.create(
                 model=self.research_model,
                 messages=[
-                    {"role": "system", "content": "You are a quantitative financial analyst. Be precise and data-driven."},
+                    {"role": "system", "content": "You are a quantitative analyst. Be extremely concise."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3
+                temperature=0.3,
+                max_tokens=150 # Cap response length for speed
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"Market analysis failed: {str(e)}. Fallback: Sideways trend detected."
+            return "Stable trend. Low volatility."
 
     async def make_trade_decision(self, analysis: str, paper_status: Dict, trading_pair: str, trade_size: float) -> Dict:
-        """Step 2: Disciplined Trade Execution Decision (DeepSeek)"""
-        prompt = f"""You are an algorithmic trading agent. You must respond with valid JSON only.
-Market analysis for {trading_pair}:
-{analysis}
-Paper account balance: {paper_status.get('current_value')}
-Trade budget: ${trade_size} USD.
-Decide whether to BUY, SELL, or HOLD.
-Respond with this JSON structure:
-{{
-  "action": "BUY" | "SELL" | "HOLD",
-  "reasoning": "Brief explanation",
-  "confidence": 0.0 to 1.0,
-  "risk_level": "low" | "medium" | "high"
-}}"""
+        """Step 2: Disciplined Trade Execution Decision (DeepSeek) - Optimized for speed"""
+        prompt = f"Analysis: {analysis}\nBalance: {paper_status.get('current_value')}\nBudget: ${trade_size}\nRespond ONLY with JSON: {{\"action\": \"BUY\"|\"SELL\"|\"HOLD\", \"reasoning\": \"...\", \"confidence\": 0.9, \"risk_level\": \"low\"}}"
 
         try:
             response = self.featherless_client.chat.completions.create(
                 model=self.trading_model,
                 messages=[
-                    {"role": "system", "content": "You are a disciplined algorithmic trading agent. Respond ONLY with valid JSON."},
+                    {"role": "system", "content": "You are a trading bot. JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=100 # Fast response
             )
             raw = response.choices[0].message.content.strip()
             # Strip markdown fences

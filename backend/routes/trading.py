@@ -46,10 +46,12 @@ async def scan_and_trade():
     trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
     trade_size = float(os.getenv("TRADE_SIZE_USD", "500"))
     
-    # 1. Fetch live market data
-    ticker = await k_agent.get_ticker(trading_pair)
-    ohlc = await k_agent.get_ohlc(trading_pair)
-    paper_status = await k_agent.get_paper_status()
+    # 1. Fetch live market data (Parallelized)
+    ticker_task = k_agent.get_ticker(trading_pair)
+    ohlc_task = k_agent.get_ohlc(trading_pair)
+    status_task = k_agent.get_paper_status()
+    
+    ticker, ohlc, paper_status = await asyncio.gather(ticker_task, ohlc_task, status_task)
     
     # 2. Step 1: Research (Qwen)
     analysis = await r_agent.analyze_market(ticker, ohlc, trading_pair)
