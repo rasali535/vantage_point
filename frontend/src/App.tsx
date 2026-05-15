@@ -77,7 +77,7 @@ const Boardroom = () => {
     </div>
   );
 };
-const Dashboard = ({ onSelectEvent, onNewMeeting, status, onRefresh }: any) => {
+const Dashboard = ({ onSelectEvent, onSelectBoardroom, onNewMeeting, status, onRefresh }: any) => {
   const pnlStr = status?.pnl_24h || "+$0.00 (0.0%)";
   const equinoxScore = 80 + (status?.history?.length || 0);
 
