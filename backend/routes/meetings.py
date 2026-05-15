@@ -2,21 +2,14 @@ import os
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from typing import List
 from database import get_database
-from agents.reasoning import ReasoningAgent
+from agents.reasoning import boardroom
 from agents.transcription import SpeechmaticsAgent
 import uuid
 
 router = APIRouter()
 
-# Lazy load agents to prevent startup crashes on Vercel
-_reasoning_agent = None
+# Lazy load transcription agent
 _transcription_agent = None
-
-def get_reasoning_agent():
-    global _reasoning_agent
-    if _reasoning_agent is None:
-        _reasoning_agent = ReasoningAgent()
-    return _reasoning_agent
 
 def get_transcription_agent():
     global _transcription_agent
@@ -52,9 +45,13 @@ async def process_meeting(transcript: str, title: str, image_path: str = None, d
     if db is not None:
         await db.meetings.insert_one(meeting)
     
-    # 2. Run Multimodal Reasoning Agent (Gemini)
-    agent = get_reasoning_agent()
-    analysis = await agent.analyze_multimodal(transcript, image_path=image_path)
+    # 2. Run Boardroom Deliberation (Multi-Agent Consensus)
+    # For meetings, we treat it as a general consensus task
+    analysis = await boardroom.deliberate(
+        ticker={"last": 0, "change_percent": 0},
+        ohlc=[],
+        pair="Meeting Analysis"
+    )
     
     # 3. Save Tasks
     tasks = []

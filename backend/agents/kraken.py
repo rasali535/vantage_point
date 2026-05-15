@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+import asyncio
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
@@ -12,6 +13,28 @@ class KrakenAgent:
         self.api_key = os.getenv("KRAKEN_API_KEY")
         self.api_secret = os.getenv("KRAKEN_API_SECRET")
         self.asset_class = "tokenized_asset"
+
+    async def _run_cli(self, args: List[str]) -> str:
+        """Executes Kraken CLI commands with a fallback for environments without the CLI (Vercel)."""
+        try:
+            cmd = [self.kraken_path] + args
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, "KRAKEN_API_KEY": self.api_key, "KRAKEN_API_SECRET": self.api_secret}
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                print(f"CLI Error: {stderr.decode()}")
+                return ""
+            return stdout.decode().strip()
+        except FileNotFoundError:
+            print("⚠️ Kraken CLI not found. Falling back to Mock Engine.")
+            return ""
+        except Exception as e:
+            print(f"Execution Error: {e}")
+            return ""
 
     def _run(self, args: List[str]) -> Dict:
         try:
