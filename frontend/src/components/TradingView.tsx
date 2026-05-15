@@ -33,6 +33,26 @@ const TradingView = () => {
     setScanning(false);
   };
 
+  const handleManualTrade = async (action: 'BUY' | 'SELL') => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trading/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, volume: 0.01 })
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        alert(`Manual ${action} successful! Order: ${data.trade.order_id}`);
+        fetchStatus();
+      } else {
+        alert(`Manual ${action} failed.`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error placing manual trade.');
+    }
+  };
+
   if (!status) return <div className="glass card">Loading Kraken Terminal...</div>;
 
   return (
@@ -129,6 +149,25 @@ const TradingView = () => {
             <div style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>AI Strategy Note</div>
             <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               Currently optimizing <strong>AAPLx</strong> position for yield-capture. Seeking momentum signals in <strong>NVDAx</strong> for treasury rebalancing.
+            </div>
+          </div>
+
+          {/* Manual Execution Controls */}
+          <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '1rem' }}>Manual Controls</div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={() => handleManualTrade('BUY')}
+                style={{ flex: 1, padding: '0.75rem', background: 'var(--success)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Manual BUY (0.01 AAPLx)
+              </button>
+              <button 
+                onClick={() => handleManualTrade('SELL')}
+                style={{ flex: 1, padding: '0.75rem', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Manual SELL (0.01 AAPLx)
+              </button>
             </div>
           </div>
         </div>
