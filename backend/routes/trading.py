@@ -59,19 +59,20 @@ async def scan_and_trade():
     # 3. Step 2: Decision (DeepSeek)
     decision = await r_agent.make_trade_decision(analysis, paper_status, trading_pair, trade_size)
     
-    # 4. Execute Trade
+    # 4. Execute Trade (Autonomous)
     trade_res = None
     if decision.get("action") != "HOLD":
-        # Calculate volume based on trade size and last price
         last_price = float(ticker.get("last", 0))
         if last_price > 0:
             volume = round(trade_size / last_price, 6)
+            # Trigger Kraken CLI execution
             trade_res = await k_agent.execute_trade(trading_pair, decision.get("action"), volume)
             
-            trades_history.append({
-                "id": f"TX-{os.urandom(4).hex().upper()}",
+            # Log the successful autonomous trade
+            trades_history.insert(0, {
+                "id": trade_res.get("order_id") if trade_res else f"TX-{os.urandom(4).hex().upper()}",
                 "symbol": trading_pair,
-                "side": decision.get("action"),
+                "side": decision.get("action").lower(),
                 "volume": volume,
                 "price": last_price,
                 "time": "Just now",
