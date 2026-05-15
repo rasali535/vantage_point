@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 import os
 from typing import List, Dict
 from agents.kraken import KrakenAgent
@@ -85,3 +85,19 @@ async def scan_and_trade():
         "decision": decision,
         "trade": trade_res
     }
+
+@router.post("/manual")
+async def manual_trade(request: Request):
+    data = await request.json()
+    action = data.get("action") # "BUY" or "SELL"
+    pair = data.get("pair", os.getenv("TRADING_PAIR", "AAPL/USD"))
+    volume = float(data.get("volume", 0.01))
+    
+    k_agent = KrakenAgent()
+    
+    if action == "BUY":
+        result = await k_agent.paper_buy(pair, volume)
+    else:
+        result = await k_agent.paper_sell(pair, volume)
+        
+    return {"status": "success", "trade": result}
