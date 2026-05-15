@@ -1,186 +1,70 @@
-import google.generativeai as genai
 import os
 import json
-from openai import OpenAI
+import asyncio
 from typing import Dict, List
+import google.generativeai as genai
+from anthropic import Anthropic
+from dotenv import load_dotenv
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+load_dotenv()
 
-class ReasoningAgent:
-    def __init__(self, model_name="gemini-1.5-flash"):
-        self.gemini_model = genai.GenerativeModel(model_name)
-        self.featherless_api_key = os.getenv("FEATHERLESS_API_KEY")
-        if self.featherless_api_key:
-            self.featherless_client = OpenAI(
-                base_url="https://api.featherless.ai/v1",
-                api_key=self.featherless_api_key
-            )
+class BoardroomCouncil:
+    def __init__(self):
+        # We use Gemini 1.5 Pro as the CEO (Orchestrator)
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        self.ceo_model = genai.GenerativeModel('gemini-1.5-pro')
         
-        # New models for market analysis
-        self.research_model = os.getenv("RESEARCH_MODEL", "Qwen/Qwen2.5-72B-Instruct")
-        self.trading_model = os.getenv("TRADING_MODEL", "deepseek-ai/DeepSeek-V3.2")
+        # We use Claude 3.5 Sonnet as the General Counsel (Audit/Risk)
+        self.anthropic = Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
-    async def _analyze_with_featherless(self, prompt: str) -> str:
-        try:
-            response = self.featherless_client.chat.completions.create(
-                model="meta-llama/Meta-Llama-3.1-70B-Instruct", # Updated to a more common model
-                messages=[
-                    {"role": "system", "content": "You are a specialized RevenueOps Agent. Extract insights as JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"Featherless SDK Error: {e}")
-            raise e
+    async def get_gc_opinion(self, market_data: str) -> str:
+        """General Counsel: Claude 3.5 Sonnet specializes in compliance and risk mitigation."""
+        response = self.anthropic.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=300,
+            system="You are the General Counsel of Vantage-Point Treasury. Your role is to identify regulatory risks and hidden contract hazards in trade decisions.",
+            messages=[{"role": "user", "content": f"Audit this market state for risk: {market_data}"}]
+        )
+        return response.content[0].text
 
-    async def boardroom_deliberation(self, query: str, context: str = "") -> Dict:
-        """The Boardroom: Multi-Agent Council Deliberation"""
-        personas = {
-            "CEO": "You are the CEO/Orchestrator. Summarize the final decision and prioritize liquidity.",
-            "General Counsel": "You are the General Counsel. Audit for contract penalties, late fees, and legal risks.",
-            "Risk Officer": "You are the Risk Officer. Focus on market volatility, liquidation impact, and Greeks.",
-            "Macro Strategist": "You are the Macro Strategist. Focus on market timing, trend analysis, and tokenized equity sentiment."
-        }
-        
-        deliberations = {}
-        
-        # 1. General Counsel (Featherless)
-        try:
-            print("Consulting General Counsel (Featherless)...")
-            counsel_resp = self.featherless_client.chat.completions.create(
-                model="meta-llama/Meta-Llama-3.1-70B-Instruct",
-                messages=[
-                    {"role": "system", "content": personas["General Counsel"]},
-                    {"role": "user", "content": f"Analyze this request for legal/contractual risks: {query}. Context: {context}"}
-                ],
-                temperature=0.2
-            )
-            deliberations["General Counsel"] = counsel_resp.choices[0].message.content
-        except Exception as e:
-            print(f"Counsel Error: {e}")
-            deliberations["General Counsel"] = "No hidden penalties detected in current invoice terms."
+    async def get_macro_opinion(self, ticker: Dict) -> str:
+        """Macro Strategist: Specialized in global trends (Simulated Qwen/Llama)."""
+        # Placeholder for external model call (e.g. OpenRouter/Qwen)
+        return f"Macro analysis shows bullish momentum on tech equities. Ticker last: {ticker.get('last')}. Volatility is stabilizing."
 
-        # 2. Risk Officer (Gemini)
-        try:
-            print("Consulting Risk Officer (Gemini)...")
-            risk_resp = self.gemini_model.generate_content(
-                f"SYSTEM: {personas['Risk Officer']}\n\nUSER: Analyze liquidity risk for: {query}\nContext: {context}"
-            )
-            deliberations["Risk Officer"] = risk_resp.text
-        except:
-            deliberations["Risk Officer"] = "Liquidity buffer maintained at 15%. Risk is within acceptable parameters."
-
-        # 3. Macro Strategist (Featherless)
-        try:
-            print("Consulting Macro Strategist (Featherless)...")
-            macro_resp = self.featherless_client.chat.completions.create(
-                model="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                messages=[
-                    {"role": "system", "content": personas["Macro Strategist"]},
-                    {"role": "user", "content": f"Analyze market timing for liquidating xStocks to cover: {query}"}
-                ],
-                temperature=0.7
-            )
-            deliberations["Macro Strategist"] = macro_resp.choices[0].message.content
-        except:
-            deliberations["Macro Strategist"] = "Market conditions stable. Optimal window for liquidation is within 24 hours."
-
-        # 4. CEO Summary (Gemini)
-        final_prompt = f"""
-        You are the Vantage-Point Orchestrator. 
-        Analyze the following deliberations and provide a final executive decision for the treasury dashboard.
+    async def deliberate(self, ticker: Dict, ohlc: List, pair: str) -> Dict:
+        """The Boardroom Council Deliberation Workflow"""
+        market_summary = f"Pair: {pair}, Last: {ticker.get('last')}, 24h Change: {ticker.get('change_percent')}%"
         
-        Council Feedback:
-        {json.dumps(deliberations, indent=2)}
+        # 1. Parallel Research
+        gc_task = self.get_gc_opinion(market_summary)
+        macro_task = self.get_macro_opinion(ticker)
         
-        Original Request: {query}
+        gc_view, macro_view = await asyncio.gather(gc_task, macro_task)
         
-        Return ONLY a JSON object with:
-        - "decision": string (clear summary)
-        - "confidence": number (0-100)
-        - "action_items": array of strings
-        - "float_yield_impact": number (bps, estimated)
-        - "equinox_score_change": number (-1.0 to +1.0)
-        - "risk_alert": string or null
+        # 2. Final CEO Decision (Gemini)
+        prompt = f"""
+        BOARDROOM DELIBERATION for {pair}
+        
+        [General Counsel Opinion]: {gc_view}
+        [Macro Strategist Opinion]: {macro_view}
+        [Market Data]: {json.dumps(ohlc[:5])}
+        
+        As CEO, synthesize these views and make a final trade decision.
+        Return ONLY valid JSON:
+        {{
+            "action": "BUY" | "SELL" | "HOLD",
+            "reasoning": "A concise synthesis of the boardroom's debate",
+            "risk_score": 0-100,
+            "confidence": 0-1.0
+        }}
         """
         
-        try:
-            print("Finalizing decision with CEO (Gemini)...")
-            ceo_resp = self.gemini_model.generate_content(final_prompt)
-            text = ceo_resp.text
-            json_start = text.find('{')
-            json_end = text.rfind('}') + 1
-            result = json.loads(text[json_start:json_end])
-            result["council_logs"] = deliberations
-            return result
-        except Exception as e:
-            print(f"CEO Error: {e}")
-            return {
-                "decision": "Proceed with automated liquidation to capture float yield.",
-                "confidence": 95,
-                "action_items": ["Liquidate $12k SPYx", "Pay Vendor via ACH"],
-                "float_yield_impact": 2.4,
-                "equinox_score_change": 0.5,
-                "council_logs": deliberations
-            }
+        response = self.ceo_model.generate_content(prompt)
+        raw_text = response.text.strip()
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            
+        return json.loads(raw_text)
 
-    async def analyze_multimodal(self, transcript: str, image_path: str = None, context: str = "") -> Dict:
-        """Vantage-Point 2.0: Multi-Agent Treasury Reasoning"""
-        # For the demo, we assume everything is a treasury request
-        return await self.boardroom_deliberation(transcript, context)
-
-    async def analyze_market(self, ticker: Dict, ohlc: List[Dict], trading_pair: str) -> str:
-        """Step 1: Specialized Financial Research (Qwen) - Optimized for speed"""
-        recent_candles = ohlc[-6:] if len(ohlc) >= 6 else ohlc
-        ohlc_summary = "\n".join(
-            f"O:{c.get('open')} H:{c.get('high')} L:{c.get('low')} C:{c.get('close')}"
-            for c in recent_candles
-        )
-
-        prompt = f"Analyze {trading_pair}. Price: {ticker.get('last')}. OHLC (last 6h):\n{ohlc_summary}\nProvide a 3-sentence summary of trend, volatility, and volume signals."
-
-        try:
-            response = self.featherless_client.chat.completions.create(
-                model=self.research_model,
-                messages=[
-                    {"role": "system", "content": "You are a quantitative analyst. Be extremely concise."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=150 # Cap response length for speed
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return "Stable trend. Low volatility."
-
-    async def make_trade_decision(self, analysis: str, paper_status: Dict, trading_pair: str, trade_size: float) -> Dict:
-        """Step 2: Disciplined Trade Execution Decision (DeepSeek) - Optimized for speed"""
-        prompt = f"Analysis: {analysis}\nBalance: {paper_status.get('current_value')}\nBudget: ${trade_size}\nRespond ONLY with JSON: {{\"action\": \"BUY\"|\"SELL\"|\"HOLD\", \"reasoning\": \"...\", \"confidence\": 0.9, \"risk_level\": \"low\"}}"
-
-        try:
-            response = self.featherless_client.chat.completions.create(
-                model=self.trading_model,
-                messages=[
-                    {"role": "system", "content": "You are a trading bot. JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=100 # Fast response
-            )
-            raw = response.choices[0].message.content.strip()
-            # Strip markdown fences
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            return json.loads(raw.strip())
-        except Exception as e:
-            return {
-                "action": "HOLD",
-                "reasoning": f"Decision engine error: {str(e)}",
-                "confidence": 0.0,
-                "risk_level": "high"
-            }
+boardroom = BoardroomCouncil()

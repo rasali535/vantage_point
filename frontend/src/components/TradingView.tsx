@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Activity, ShoppingCart, RefreshCcw } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import BoardroomCouncil from './BoardroomCouncil';
 
 const TradingView = () => {
   const [status, setStatus] = useState<any>(null);
   const [scanning, setScanning] = useState(false);
+  const [lastDecision, setLastDecision] = useState<any>(null);
 
   useEffect(() => {
     fetchStatus();
@@ -25,7 +27,9 @@ const TradingView = () => {
   const runScanner = async () => {
     setScanning(true);
     try {
-      await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
+      const data = await res.json();
+      setLastDecision(data.decision);
       await fetchStatus();
     } catch (err) {
       console.error(err);
@@ -50,6 +54,22 @@ const TradingView = () => {
     } catch (err) {
       console.error(err);
       alert('Error placing manual trade.');
+    }
+  };
+
+  const handleInvoiceUpload = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trading/invoice`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        alert(`Invoice Audited! Vendor: ${data.extraction.vendor_name}, Total: ${data.extraction.total_amount}`);
+        fetchStatus();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error processing invoice.');
     }
   };
 
@@ -80,52 +100,56 @@ const TradingView = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
-        {/* Recent Trades */}
-        <div className="glass card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShoppingCart size={20} color="var(--warning)" /> Execution Log (Kraken CLI)
-            </h3>
-            <button 
-              className={`btn btn-primary ${scanning ? 'loading' : ''}`} 
-              onClick={runScanner}
-              disabled={scanning}
-            >
-              <RefreshCcw size={16} /> {scanning ? 'Scanning Market...' : 'Run Autonomous Scan'}
-            </button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <BoardroomCouncil decision={lastDecision} />
           
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--glass-border)' }}>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Asset</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Side</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Volume</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Price</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Status</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {status.history.map((trade: any) => (
-                  <tr key={trade.id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                    <td style={{ padding: '1rem', fontWeight: 600 }}>{trade.symbol}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <span className={`badge ${trade.side === 'buy' ? 'badge-success' : 'badge-danger'}`}>
-                        {trade.side.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '1rem' }}>{trade.volume}</td>
-                    <td style={{ padding: '1rem' }}>${trade.price}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--success)' }}>● {trade.status}</span>
-                    </td>
-                    <td style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{trade.time}</td>
+          {/* Recent Trades */}
+          <div className="glass card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ShoppingCart size={20} color="var(--warning)" /> Execution Log (Kraken CLI)
+              </h3>
+              <button 
+                className={`btn btn-primary ${scanning ? 'loading' : ''}`} 
+                onClick={runScanner}
+                disabled={scanning}
+              >
+                <RefreshCcw size={16} /> {scanning ? 'Scanning Market...' : 'Run Autonomous Scan'}
+              </button>
+            </div>
+            
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--glass-border)' }}>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Asset</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Side</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Volume</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Price</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Status</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Time</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {status.history.map((trade: any) => (
+                    <tr key={trade.id || trade.order_id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                      <td style={{ padding: '1rem', fontWeight: 600 }}>{trade.symbol}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <span className={`badge ${trade.side === 'buy' ? 'badge-success' : 'badge-danger'} ${trade.side === 'expense' ? 'badge-warning' : ''}`}>
+                          {trade.side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1rem' }}>{trade.volume}</td>
+                      <td style={{ padding: '1rem' }}>${trade.price}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: trade.status === 'processed' ? 'var(--primary)' : 'var(--success)' }}>● {trade.status}</span>
+                      </td>
+                      <td style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{trade.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -155,18 +179,27 @@ const TradingView = () => {
           {/* Manual Execution Controls */}
           <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '1rem' }}>Manual Controls</div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button 
+                  onClick={() => handleManualTrade('BUY')}
+                  style={{ flex: 1, padding: '0.75rem', background: 'var(--success)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Manual BUY (0.01 AAPLx)
+                </button>
+                <button 
+                  onClick={() => handleManualTrade('SELL')}
+                  style={{ flex: 1, padding: '0.75rem', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Manual SELL (0.01 AAPLx)
+                </button>
+              </div>
+              
               <button 
-                onClick={() => handleManualTrade('BUY')}
-                style={{ flex: 1, padding: '0.75rem', background: 'var(--success)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
+                onClick={handleInvoiceUpload}
+                style={{ width: '100%', padding: '0.75rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
-                Manual BUY (0.01 AAPLx)
-              </button>
-              <button 
-                onClick={() => handleManualTrade('SELL')}
-                style={{ flex: 1, padding: '0.75rem', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Manual SELL (0.01 AAPLx)
+                <DollarSign size={16} /> Process & Audit Invoice (Multimodal)
               </button>
             </div>
           </div>
