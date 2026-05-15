@@ -8,10 +8,17 @@ load_dotenv()
 
 class MultimodalAgent:
     def __init__(self):
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel('gemini-1.5-pro')
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key and "your_gemini" not in api_key:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-pro')
+        else:
+            self.model = None
+            print("⚠️ GEMINI_API_KEY missing or invalid. Multimodal extraction disabled.")
 
     async def extract_invoice(self, file_path: str) -> Dict:
+        if not self.model:
+            return {"vendor_name": "Mock Vendor", "total_amount": 1250.0, "status": "mock"}
         """
         Uses Gemini 1.5 Pro to extract structured data from an invoice PDF/Image.
         """

@@ -9,6 +9,8 @@ load_dotenv()
 class FeatherlessAgent:
     def __init__(self):
         self.api_key = os.getenv("FEATHERLESS_API_KEY")
+        if not self.api_key or "rc_" not in self.api_key:
+            print("⚠️ FEATHERLESS_API_KEY missing or invalid.")
         self.base_url = "https://api.featherless.ai/v1"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -16,6 +18,8 @@ class FeatherlessAgent:
         }
 
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
+        if not self.api_key or "rc_" not in self.api_key:
+            return "Consensus: Strategy maintains current trajectory. (Key missing)"
         """Calls the Featherless API using the OpenAI-compatible endpoint."""
         async with httpx.AsyncClient(timeout=30.0) as client:
             payload = {
