@@ -2,47 +2,45 @@ import os
 import json
 import asyncio
 from typing import Dict, List
-import google.generativeai as genai
-from anthropic import Anthropic
+from agents.featherless import featherless
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class BoardroomCouncil:
     def __init__(self):
-        # We use Gemini 1.5 Pro as the CEO (Orchestrator)
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.ceo_model = genai.GenerativeModel('gemini-1.5-pro')
-        
-        # We use Claude 3.5 Sonnet as the General Counsel (Audit/Risk)
-        self.anthropic = Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
+        self.research_model = os.getenv("RESEARCH_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+        self.trading_model = os.getenv("TRADING_MODEL", "deepseek-ai/DeepSeek-V3")
+        # We'll try to pull Gemini 1.5 via Featherless if it's available, else fallback to direct
+        self.ceo_model = "google/gemini-1.5-pro" 
 
     async def get_gc_opinion(self, market_data: str) -> str:
-        """General Counsel: Claude 3.5 Sonnet specializes in compliance and risk mitigation."""
-        response = self.anthropic.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            max_tokens=300,
-            system="You are the General Counsel of Vantage-Point Treasury. Your role is to identify regulatory risks and hidden contract hazards in trade decisions.",
-            messages=[{"role": "user", "content": f"Audit this market state for risk: {market_data}"}]
+        """General Counsel: DeepSeek-V3 specializes in risk and logical audit."""
+        return await featherless.chat(
+            model=self.trading_model,
+            system_prompt="You are the General Counsel of Vantage-Point. Audit this market state for compliance and hidden risk.",
+            user_prompt=f"Market data: {market_data}"
         )
-        return response.content[0].text
 
     async def get_macro_opinion(self, ticker: Dict) -> str:
-        """Macro Strategist: Specialized in global trends (Simulated Qwen/Llama)."""
-        # Placeholder for external model call (e.g. OpenRouter/Qwen)
-        return f"Macro analysis shows bullish momentum on tech equities. Ticker last: {ticker.get('last')}. Volatility is stabilizing."
+        """Macro Strategist: Qwen 2.5-72B specializes in global trends and volatility."""
+        return await featherless.chat(
+            model=self.research_model,
+            system_prompt="You are the Macro Strategist. Analyze the global trends and volatility for this asset.",
+            user_prompt=f"Ticker: {json.dumps(ticker)}"
+        )
 
     async def deliberate(self, ticker: Dict, ohlc: List, pair: str) -> Dict:
-        """The Boardroom Council Deliberation Workflow"""
+        """The Boardroom Council Deliberation Workflow via Featherless"""
         market_summary = f"Pair: {pair}, Last: {ticker.get('last')}, 24h Change: {ticker.get('change_percent')}%"
         
-        # 1. Parallel Research
+        # 1. Parallel Research (Featherless)
         gc_task = self.get_gc_opinion(market_summary)
         macro_task = self.get_macro_opinion(ticker)
         
         gc_view, macro_view = await asyncio.gather(gc_task, macro_task)
         
-        # 2. Final CEO Decision (Gemini)
+        # 2. Final CEO Decision (Featherless / Gemini)
         prompt = f"""
         BOARDROOM DELIBERATION for {pair}
         
@@ -60,11 +58,27 @@ class BoardroomCouncil:
         }}
         """
         
-        response = self.ceo_model.generate_content(prompt)
-        raw_text = response.text.strip()
+        # Pulling Gemini 1.5 through the Featherless endpoint
+        response_text = await featherless.chat(
+            model=self.ceo_model,
+            system_prompt="You are the CEO of Vantage-Point Treasury.",
+            user_prompt=prompt
+        )
+        
+        # Clean up JSON formatting
+        raw_text = response_text.strip()
         if "```json" in raw_text:
             raw_text = raw_text.split("```json")[1].split("```")[0].strip()
             
-        return json.loads(raw_text)
+        try:
+            return json.loads(raw_text)
+        except:
+            # Fallback for parsing errors
+            return {
+                "action": "HOLD",
+                "reasoning": "Synthesis failed, defaulting to neutral state for safety.",
+                "risk_score": 50,
+                "confidence": 0.5
+            }
 
 boardroom = BoardroomCouncil()
