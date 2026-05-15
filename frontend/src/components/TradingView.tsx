@@ -113,14 +113,17 @@ const TradingView = () => {
         <div className="glass card">
           <h3 style={{ marginBottom: '1.5rem' }}>Portfolio Holdings</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {Object.entries(status.balance).map(([asset, amount]: [string, any]) => (
-              asset !== 'USD' && (
-                <div key={asset} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'var(--surface-light)', borderRadius: '8px' }}>
-                  <div style={{ fontWeight: 600 }}>{asset}</div>
-                  <div style={{ color: 'var(--text-muted)' }}>{amount} units</div>
-                </div>
-              )
+            {status.balance?.holdings && Object.entries(status.balance.holdings).map(([asset, amount]: [string, any]) => (
+              <div key={asset} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'var(--surface-light)', borderRadius: '8px' }}>
+                <div style={{ fontWeight: 600 }}>{asset}</div>
+                <div style={{ color: 'var(--text-muted)' }}>{amount} units</div>
+              </div>
             ))}
+            {(!status.balance?.holdings || Object.keys(status.balance.holdings).length === 0) && (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center', padding: '1rem' }}>
+                No active holdings. Treasury is 100% liquid in USD.
+              </div>
+            )}
           </div>
           <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 193, 7, 0.1)', borderRadius: '8px', border: '1px solid var(--warning)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>AI Strategy Note</div>
