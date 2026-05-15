@@ -1,4 +1,4 @@
-import { User, Shield, Globe, Cpu } from 'lucide-react';
+import { User, Shield, Globe } from 'lucide-react';
 
 interface CouncilProps {
   decision?: {
