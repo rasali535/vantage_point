@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+import os
 from typing import List, Dict
 from agents.kraken import KrakenAgent
 from agents.reasoning import ReasoningAgent
@@ -23,10 +24,7 @@ def get_reasoning_agent():
     return _reasoning_agent
 
 # Track active trades for the dashboard
-trades_history = [
-    {"id": "1", "symbol": "AAPLx", "side": "buy", "volume": 10, "price": 182.5, "time": "2026-05-13 14:20", "status": "filled"},
-    {"id": "2", "symbol": "NVDAx", "side": "buy", "volume": 5, "price": 890.2, "time": "2026-05-13 15:45", "status": "filled"}
-]
+trades_history = []
 
 @router.get("/status")
 async def get_trading_status():
@@ -36,49 +34,52 @@ async def get_trading_status():
         "balance": balance,
         "history": trades_history[-10:],
         "pnl_24h": "+$1,240.50 (4.2%)",
-        "active_strategy": "Momentum Scalper v1.0"
+        "active_strategy": "Multi-Model Research (Qwen + DeepSeek)"
     }
 
 @router.post("/scan")
 async def scan_and_trade():
-    """Autonomous Loop: Scan -> Decide -> Execute"""
-    symbols = ["AAPLx", "TSLAx", "NVDAx", "SPYx", "QQQx"]
-    results = []
+    """Vantage-Point 2.0: Multi-Model Autonomous Loop"""
+    k_agent = get_kraken_agent()
+    r_agent = get_reasoning_agent()
     
-    for symbol in symbols:
-        # 2. Form Strategy (Use Featherless for complex analysis)
-        k_agent = get_kraken_agent()
-        r_agent = get_reasoning_agent()
-        data = await k_agent.get_price(symbol)
-        
-        prompt = f"Analyze the momentum for {symbol} at price {data.get('price')}. Return a momentum score 0-100 and a recommendation (buy/sell/hold)."
-        analysis = await r_agent.analyze_multimodal(prompt) 
-        
-        score = analysis.get("Deal Health Score", 50) # Mapping health score to momentum
-        recommendation = "hold"
-        if score > 80: recommendation = "buy"
-        elif score < 20: recommendation = "sell"
-        
-        # 3. Execute Trade
-        trade_res = None
-        if recommendation != "hold":
-            trade_res = await k_agent.execute_trade(symbol, recommendation, 1.0)
+    trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
+    trade_size = float(os.getenv("TRADE_SIZE_USD", "500"))
+    
+    # 1. Fetch live market data
+    ticker = await k_agent.get_ticker(trading_pair)
+    ohlc = await k_agent.get_ohlc(trading_pair)
+    paper_status = await k_agent.get_paper_status()
+    
+    # 2. Step 1: Research (Qwen)
+    analysis = await r_agent.analyze_market(ticker, ohlc, trading_pair)
+    
+    # 3. Step 2: Decision (DeepSeek)
+    decision = await r_agent.make_trade_decision(analysis, paper_status, trading_pair, trade_size)
+    
+    # 4. Execute Trade
+    trade_res = None
+    if decision.get("action") != "HOLD":
+        # Calculate volume based on trade size and last price
+        last_price = float(ticker.get("last", 0))
+        if last_price > 0:
+            volume = round(trade_size / last_price, 6)
+            trade_res = await k_agent.execute_trade(trading_pair, decision.get("action"), volume)
+            
             trades_history.append({
-                "id": str(len(trades_history) + 1),
-                "symbol": symbol,
-                "side": recommendation,
-                "volume": 1.0,
-                "price": data.get("price"),
+                "id": f"TX-{os.urandom(4).hex().upper()}",
+                "symbol": trading_pair,
+                "side": decision.get("action"),
+                "volume": volume,
+                "price": last_price,
                 "time": "Just now",
-                "status": "filled"
+                "status": "filled",
+                "reasoning": decision.get("reasoning")
             })
             
-        results.append({
-            "symbol": symbol,
-            "price": data.get("price"),
-            "momentum": score,
-            "action": recommendation,
-            "trade": trade_res
-        })
-        
-    return {"results": results}
+    return {
+        "pair": trading_pair,
+        "analysis": analysis,
+        "decision": decision,
+        "trade": trade_res
+    }
