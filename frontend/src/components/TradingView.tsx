@@ -128,7 +128,7 @@ const TradingView = () => {
           <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 193, 7, 0.1)', borderRadius: '8px', border: '1px solid var(--warning)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>AI Strategy Note</div>
             <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              Currently overweight in <strong>AAPLx</strong>. Seeking momentum signals in <strong>NVDAx</strong> for potential rebalancing.
+              Currently optimizing <strong>AAPLx</strong> position for yield-capture. Seeking momentum signals in <strong>NVDAx</strong> for treasury rebalancing.
             </div>
           </div>
         </div>

@@ -22,7 +22,7 @@ const Dashboard = ({ onSelectMeeting, onNewMeeting }: { onSelectMeeting: (id: st
     {/* Float Yield Ticker */}
     <div className="ticker-container" style={{ margin: '-2rem -3rem 2rem -3rem' }}>
       <div className="ticker-content">
-        BTCx +2.4% • ETHx -0.5% • SPYx +1.2% • TSLAx +4.7% • AAPLx +0.8% • Total Float Yield (Q2): +8.4 bps ($47,231 captured) • Liquidation Queue: AWS-99283 pending...
+        AAPLx +2.4% • MSFTx -0.5% • SPYx +1.2% • TSLAx +4.7% • NVDAx +0.8% • Total Float Yield (Q2): +8.4 bps ($47,231 captured) • Liquidation Queue: AWS-99283 pending...
       </div>
     </div>
 
