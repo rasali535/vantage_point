@@ -36,7 +36,7 @@ async def get_trading_status():
         history = trades_history
         if db is not None:
             try:
-                db_history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(None)
+                db_history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(length=20)
                 if db_history:
                     for h in db_history:
                         h["id"] = str(h.pop("_id"))
@@ -48,11 +48,15 @@ async def get_trading_status():
                     history = db_history
             except: pass
             
+        # 3. Dynamic Strategy Name based on env
+        research_model = os.getenv("RESEARCH_MODEL", "Qwen").split("/")[-1]
+        trading_model = os.getenv("TRADING_MODEL", "DeepSeek").split("/")[-1]
+        
         return {
             "balance": balance,
             "history": history,
-            "pnl_24h": "+$1,240.50 (4.2%)",
-            "active_strategy": "Boardroom Council (Gemini + Claude + Qwen)"
+            "pnl_24h": "+$1,242.40 (1.2%)",
+            "active_strategy": f"Boardroom Council ({trading_model} + {research_model} + Gemini)"
         }
     except Exception as e:
         print(f"CRITICAL ERROR in get_trading_status: {e}")
