@@ -15,6 +15,7 @@ type Position = {
 type AutopilotStatus = {
   enabled: boolean;
   worker_configured: boolean;
+  worker_running: boolean;
   paper_trading_enabled: boolean;
   monitor_interval_seconds: number;
   scan_interval_seconds: number;
@@ -202,13 +203,14 @@ const PaperTrading: React.FC = () => {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
-          <button className={autopilot?.enabled ? 'btn' : 'btn btn-primary'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.paper_trading_enabled}>
+          <button className={autopilot?.enabled ? 'btn' : 'btn btn-primary'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
             {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
           </button>
           <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
           </span>
         </div>
+        {autopilot && !autopilot.worker_running && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 10 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</p>}
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
           Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
         </p>
