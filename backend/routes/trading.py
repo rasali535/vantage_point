@@ -1,15 +1,23 @@
 from datetime import datetime, timezone
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Literal
+import hmac
+import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
+from pydantic import BaseModel, Field
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from agents.kraken import KrakenAgent
 from agents.orchestrator import trading_orchestrator
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
-from risk.engine import RiskPolicy
+from risk.engine import RiskPolicy, DeterministicRiskEngine
+from paper_trading.engine import (
+    PaperTradeError, account_summary, initial_account, simulate_order,
+)
 
 router = APIRouter()
 _kraken_agent = None
@@ -193,3 +201,110 @@ async def manual_trade(request: Request):
         status_code=423,
         detail="Trade execution is disabled during the safety and exchange-adapter build.",
     )
+
+
+class PaperOrderRequest(BaseModel):
+    pair: str = Field(min_length=3, max_length=20)
+    side: Literal["BUY", "SELL"]
+    quantity: str = Field(min_length=1, max_length=40)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    stop_loss_price: str | None = Field(default=None, max_length=40)
+
+
+def _require_paper_access(token: str | None) -> None:
+    if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true":
+        raise HTTPException(status_code=423, detail="Paper trading is disabled by the operator.")
+    expected = os.getenv("PAPER_API_TOKEN")
+    if not expected or not token or not hmac.compare_digest(expected, token):
+        raise HTTPException(status_code=401, detail="Valid paper-trading access token required.")
+    if not os.getenv("PAPER_INITIAL_BALANCE_USD"):
+        raise HTTPException(status_code=503, detail="Configure PAPER_INITIAL_BALANCE_USD before initializing the paper account.")
+
+
+async def _get_or_create_paper_account(db):
+    account = await db.paper_accounts.find_one({"_id": "default"})
+    if account:
+        return account
+    try:
+        seed = initial_account(os.environ["PAPER_INITIAL_BALANCE_USD"])
+        await db.paper_accounts.insert_one(seed)
+    except DuplicateKeyError:
+        pass
+    except (KeyError, PaperTradeError) as exc:
+        raise HTTPException(status_code=503, detail="Paper account configuration is invalid or incomplete.") from exc
+    return await db.paper_accounts.find_one({"_id": "default"})
+
+
+@router.get("/paper/account")
+async def get_paper_account(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    account = await _get_or_create_paper_account(db)
+    prices = {}
+    for position in account.get("positions", {}).keys():
+        ticker = await get_kraken_agent().get_ticker(position)
+        prices[position] = ticker["last"]
+    return account_summary(account, prices)
+
+
+@router.get("/paper/orders")
+async def get_paper_orders(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    account = await _get_or_create_paper_account(db)
+    return list(reversed(account.get("orders", [])[-100:]))
+
+
+@router.post("/paper/orders")
+async def submit_paper_order(
+    payload: PaperOrderRequest,
+    x_paper_token: str | None = Header(default=None),
+):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        ticker = await get_kraken_agent().get_ticker(payload.pair)
+        reference_price = ticker["last"]
+        for _attempt in range(5):
+            account = await _get_or_create_paper_account(db)
+            updated, fill = simulate_order(
+                account,
+                pair=payload.pair,
+                side=payload.side,
+                quantity=payload.quantity,
+                reference_price=reference_price,
+                idempotency_key=payload.idempotency_key,
+                stop_loss_price=payload.stop_loss_price,
+                risk_engine=DeterministicRiskEngine(),
+            )
+            if fill.get("duplicate"):
+                return {"fill": fill, "account": account_summary(account), "execution_mode": "paper"}
+            update_fields = {key: value for key, value in updated.items() if key != "_id"}
+            saved = await db.paper_accounts.find_one_and_update(
+                {"_id": "default", "version": account.get("version", 0)},
+                {"$set": update_fields},
+                return_document=ReturnDocument.AFTER,
+            )
+            if saved:
+                await db.audit_logs.insert_one({
+                    "timestamp": utc_now(),
+                    "agent": "paper_execution",
+                    "action": f"Simulated {payload.side} {payload.pair}",
+                    "status": "paper_fill_recorded",
+                    "execution_enabled": False,
+                    "exchange_order_submitted": False,
+                    "idempotency_key": payload.idempotency_key,
+                })
+                return {
+                    "fill": fill,
+                    "account": account_summary(saved, {payload.pair: reference_price}),
+                    "execution_mode": "paper",
+                    "exchange_order_submitted": False,
+                }
+        raise HTTPException(status_code=409, detail="Paper account changed concurrently; retry with the same idempotency key.")
+    except HTTPException:
+        raise
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Paper trading is temporarily unavailable. No live order was submitted.") from exc
