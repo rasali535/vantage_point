@@ -102,101 +102,106 @@ const Boardroom = () => {
   );
 };
 const Dashboard = ({ onSelectEvent, onSelectBoardroom, onNewMeeting, status, onRefresh }: any) => {
-  const pnlStr = status?.pnl_24h || "+$0.00 (0.0%)";
-  const equinoxScore = 80 + (status?.history?.length || 0);
+  const history = Array.isArray(status?.history) ? status.history : [];
+  const balance = status?.balance?.USD;
+  const exchangeConnected = status?.exchange_status === "connected";
+  const completedOrders = history.filter((item: any) => ["buy", "sell"].includes(String(item.side).toLowerCase()));
 
   return (
     <div className="animate-fade-in">
-      {/* Float Yield Ticker */}
-      <div className="ticker-container" style={{ margin: '-2rem -3rem 2rem -3rem' }}>
-        <div className="ticker-content">
-          AAPLx +2.4% • MSFTx -0.5% • SPYx +1.2% • TSLAx +4.7% • NVDAx +0.8% • Total Float Yield (Q2): +8.4 bps ($47,231 captured) • Liquidation Queue: AWS-99283 pending...
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Vantage Command</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Self-driving corporate treasury & float orchestration</p>
+          <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Ras Ali AI Trader</h1>
+          <p style={{ color: 'var(--text-muted)' }}>Kraken spot market intelligence · Paper-first research · Controlled execution</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button className="glass btn" onClick={onRefresh} style={{ border: '1px solid var(--primary)' }}>
             <RefreshCcw size={18} style={{ marginRight: '0.5rem' }} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={onNewMeeting}>
-            <Plus size={20} /> Process Invoice
+            <Plus size={20} /> Analyze Audio Note
           </button>
         </div>
       </div>
-      
+
       <div className="grid">
-        <div className="glass card" style={{ position: 'relative', overflow: 'hidden' }}>
+        <div className="glass card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <AlertCircle color="var(--warning)" />
+            <h3 style={{ color: 'var(--text-muted)' }}>Execution Mode</h3>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 800 }}>LOCKED</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Analysis only. No orders can be submitted.</div>
+        </div>
+
+        <div className="glass card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
             <Activity color="var(--primary)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Equinox Score</h3>
+            <h3 style={{ color: 'var(--text-muted)' }}>Kraken Connection</h3>
           </div>
-          <div className="equinox-score">{equinoxScore}</div>
-          <div style={{ color: 'var(--success)', fontSize: '0.875rem' }}>Optimized • +1.2 from yesterday</div>
+          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{exchangeConnected ? 'CONNECTED' : 'NOT VERIFIED'}</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Market data and account access are reported separately.</div>
         </div>
-        
+
         <div className="glass card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
             <TrendingUp color="var(--success)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Float Yield (24h)</h3>
+            <h3 style={{ color: 'var(--text-muted)' }}>Account Balance</h3>
           </div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--success)' }}>{pnlStr.split(' ')[0]}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Current APY: 5.42% (Weighted)</div>
-        </div>
-        
-        <div className="glass card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <AlertCircle color="var(--vantage-gold)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Liquidation Events</h3>
-          </div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 700 }}>{status?.history?.filter((h: any) => h.side === 'expense').length || 0}</div>
-          <div style={{ color: 'var(--vantage-gold)', fontSize: '0.875rem' }}>Active obligations in ledger</div>
+          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{typeof balance === 'number' ? `$${balance.toLocaleString()}` : 'Unavailable'}</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No estimated or simulated balances are displayed.</div>
         </div>
 
-        <div className="glass card" style={{ cursor: 'pointer', border: '1px solid rgba(79, 70, 229, 0.3)' }} onClick={() => onSelectBoardroom()}>
+        <div className="glass card" style={{ cursor: 'pointer', border: '1px solid rgba(79, 70, 229, 0.3)' }} onClick={onSelectBoardroom}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
             <Users color="var(--primary)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Boardroom Pulse</h3>
+            <h3 style={{ color: 'var(--text-muted)' }}>Boardroom Intelligence</h3>
           </div>
-          <div style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 600, marginBottom: '0.5rem' }}>CEO & Risk Officers Active</div>
-          <div className="ticker-content" style={{ fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            Analyzing {status?.history?.[0]?.symbol || 'latest markets'}... Council recommending {status?.history?.[0]?.side === 'buy' ? 'hedged entry' : 'liquidation'}...
-          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{history.length}</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Recorded ledger events · Open analysis history</div>
         </div>
       </div>
 
-      <h2 style={{ marginTop: '3rem', marginBottom: '1.5rem' }}>Reasoning Path Ledger</h2>
-      <div className="glass" style={{ overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead style={{ background: 'var(--surface-light)' }}>
-            <tr>
-              <th style={{ padding: '1rem' }}>Event</th>
-              <th style={{ padding: '1rem' }}>Strategy</th>
-              <th style={{ padding: '1rem' }}>Yield Impact</th>
-              <th style={{ padding: '1rem' }}>Confidence</th>
-              <th style={{ padding: '1rem' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(status?.history || []).slice(0, 5).map((m: any) => (
-              <tr key={m.id || m.order_id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={onSelectEvent}>
-                <td style={{ padding: '1rem', fontWeight: 500 }}>{m.side === 'expense' ? 'Invoice Liquidation' : 'Market Rebalance'}: {m.symbol}</td>
-                <td style={{ padding: '1rem' }}>
-                  <span className="badge" style={{ background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)' }}>
-                    {m.reasoning?.slice(0, 30)}...
-                  </span>
-                </td>
-                <td style={{ padding: '1rem', color: 'var(--success)' }}>{m.side === 'buy' ? '+2.4 bps' : '-'}</td>
-                <td style={{ padding: '1rem' }}>98%</td>
-                <td style={{ padding: '1rem' }} onClick={(e) => e.stopPropagation()}><MoreVertical size={18} cursor="pointer" /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="glass card" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem' }}>
+          <h2>Trade & Decision Ledger</h2>
+          <span className="badge">Read only</span>
+        </div>
+        {history.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', padding: '1.5rem 0' }}>
+            No persisted trading events yet. The ledger will populate when MongoDB is available and verified events are recorded.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: '1rem' }}>Asset</th>
+                  <th style={{ padding: '1rem' }}>Side</th>
+                  <th style={{ padding: '1rem' }}>Volume</th>
+                  <th style={{ padding: '1rem' }}>Price</th>
+                  <th style={{ padding: '1rem' }}>Status</th>
+                  <th style={{ padding: '1rem' }}>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.slice(0, 10).map((item: any) => (
+                  <tr key={item.id || item.order_id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={onSelectEvent}>
+                    <td style={{ padding: '1rem' }}>{item.symbol || item.pair || '—'}</td>
+                    <td style={{ padding: '1rem' }}>{String(item.side || item.action || '—').toUpperCase()}</td>
+                    <td style={{ padding: '1rem' }}>{item.volume ?? '—'}</td>
+                    <td style={{ padding: '1rem' }}>{item.price ?? '—'}</td>
+                    <td style={{ padding: '1rem' }}>{item.status || item.execution_status || 'recorded'}</td>
+                    <td style={{ padding: '1rem' }}>{item.time || item.timestamp || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+          {completedOrders.length} historical order records · P&amp;L is not shown until it can be calculated from confirmed fills.
+        </div>
       </div>
     </div>
   );
@@ -283,7 +288,7 @@ const App: React.FC = () => {
       setBgStatus(null);
       
       // Notify user with premium overlay/alert
-      alert(`Speechmatics ASR Transcribed successfully! \n\nCommand: "Executive Voice Memo (CFO): Reallocate $20,000 from TSLAx stock holdings to BTCx tokenized digital asset reserve immediately to maximize yield capture ahead of the quarterly review."\n\nResult: Autonomous $20,000 portfolio rebalance executed, balance updated on Vantage dashboard!`);
+      alert("Audio note transcribed and sent for analysis. No trade was placed.");
       
       // Automatically refresh the page/stats
       fetchStatus();
@@ -292,22 +297,10 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setBgStatus(null);
-      alert("Autonomous Voice Rebalance successfully parsed and processed on Vultr VM container!");
-      fetchStatus();
-      setActiveTab('boardroom');
+      alert("Audio note could not be processed. No trade was placed.");
     }
   };
 
-  const simulateAudioUpload = async () => {
-    // Generate valid silent audio wave file bigger than 84 bytes
-    const wav_header = new Uint8Array([
-      82, 73, 70, 70, 244, 7, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32, 16, 0, 0, 0, 1, 0, 1, 0, 
-      34, 86, 0, 0, 68, 172, 0, 0, 2, 0, 16, 0, 100, 97, 116, 97, 208, 7, 0, 0
-    ]);
-    const pcm_data = new Uint8Array(2000);
-    const audioBlob = new Blob([wav_header, pcm_data], { type: 'audio/wav' });
-    await uploadAudio(audioBlob);
-  };
 
   useEffect(() => {
     fetchStatus();
@@ -322,7 +315,11 @@ const App: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/status`);
       const data = await res.json();
-      setStatus(data);
+      if (!res.ok) {
+        setStatus({ balance: null, history: [], pnl_24h: null, active_strategy: 'Unavailable', exchange_status: 'unavailable', error: data.detail || 'Service unavailable' });
+        return;
+      }
+      setStatus({ ...data, history: Array.isArray(data.history) ? data.history : [] });
     } catch (err) {
       console.error(err);
     }
@@ -354,25 +351,25 @@ const App: React.FC = () => {
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => { setActiveTab('dashboard'); }}
           >
-            <LayoutDashboard size={20} /> Vantage Command
+            <LayoutDashboard size={20} /> Dashboard
           </div>
           <div 
             className={`nav-item ${activeTab === 'trading' ? 'active' : ''}`}
             onClick={() => setActiveTab('trading')}
           >
-            <TrendingUp size={20} /> Treasury (Hedge Fund)
+            <TrendingUp size={20} /> AI Trader
           </div>
           <div 
             className={`nav-item ${activeTab === 'meetings' ? 'active' : ''}`}
             onClick={() => setActiveTab('meetings')}
           >
-            <FileText size={20} /> Ledger (Events)
+            <FileText size={20} /> Analysis Notes
           </div>
           <div 
             className={`nav-item ${activeTab === 'audit' ? 'active' : ''}`}
             onClick={() => setActiveTab('audit')}
           >
-            <History size={20} /> Audit (SOX)
+            <History size={20} /> Audit Trail
           </div>
           <div 
             className={`nav-item ${activeTab === 'boardroom' ? 'active' : ''}`}
