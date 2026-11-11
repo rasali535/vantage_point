@@ -30,8 +30,9 @@ const Boardroom = () => {
   const fetchBoardroom = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/boardroom`);
+      if (!res.ok) throw new Error("Boardroom history is unavailable.");
       const data = await res.json();
-      setDeliberations(data);
+      setDeliberations(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -43,14 +44,16 @@ const Boardroom = () => {
     <div className="animate-fade-in">
       <h2 style={{ marginBottom: '1.5rem' }}>The Boardroom <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Live Deliberation)</span></h2>
       
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '2rem' }}>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '2rem' }}>
         {[
-          { name: 'Strategy Synthesis', status: 'LLM-assisted analysis', color: 'var(--primary)' },
-          { name: 'Signal Risk Filter', status: 'Deterministic whipsaw checks', color: 'var(--danger)' },
-          { name: 'Market Research', status: 'Kraken public market data', color: 'var(--success)' },
-          { name: 'Audit Ledger', status: 'MongoDB event persistence', color: 'var(--vantage-gold)' }
-        ].map((agent, i) => (
-          <div key={i} className="glass card" style={{ padding: '1rem', borderLeft: `4px solid ${agent.color}` }}>
+          { name: 'Market Intelligence', status: 'Meta AI · verified market context', color: 'var(--primary)' },
+          { name: 'Technical Analyst', status: 'EMA · RSI · ATR calculations', color: 'var(--success)' },
+          { name: 'Strategy', status: 'Meta AI · BUY / SELL / HOLD proposal', color: 'var(--primary)' },
+          { name: 'Risk Manager', status: 'Meta AI advisory · deterministic limits', color: 'var(--danger)' },
+          { name: 'Execution', status: 'Risk preflight · order submission locked', color: 'var(--vantage-gold)' },
+          { name: 'Performance', status: 'Confirmed closed trades only', color: 'var(--success)' }
+        ].map((agent) => (
+          <div key={agent.name} className="glass card" style={{ padding: '1rem', borderLeft: `4px solid ${agent.color}` }}>
             <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{agent.name}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{agent.status}</div>
           </div>
@@ -60,11 +63,18 @@ const Boardroom = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         {deliberations.length === 0 && !loading && (
           <div className="glass card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No active deliberations in the boardroom. Scanning markets...
+            No six-agent analysis cycles have been recorded yet. Run a market scan to start the boardroom.
           </div>
         )}
         {deliberations.map((d: any, idx) => {
-          const actionColor = d.action === 'BUY' ? 'var(--success)' : d.action === 'SELL' ? 'var(--danger)' : 'var(--vantage-gold)';
+          const strategy = d.strategy || {};
+          const technical = d.technical_analysis || {};
+          const risk = d.risk_assessment || {};
+          const execution = d.execution_assessment || {};
+          const performance = d.performance_context || {};
+          const action = strategy.action || d.action || 'HOLD';
+          const reasoning = strategy.rationale || d.reasoning || 'No reasoning provided.';
+          const actionColor = action === 'BUY' ? 'var(--success)' : action === 'SELL' ? 'var(--danger)' : 'var(--vantage-gold)';
           return (
             <div key={idx} className="glass card" style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -78,20 +88,23 @@ const Boardroom = () => {
                     padding: '0.2rem 0.75rem',
                     borderRadius: '999px',
                     letterSpacing: '0.05em'
-                  }}>{d.action || '—'}</span>
+                  }}>{action}</span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(d.timestamp).toLocaleString()}</div>
               </div>
               <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '1rem' }}>
-                {d.reasoning || d.deliberation || 'No reasoning provided.'}
+                {reasoning}
               </div>
-              <div style={{ display: 'flex', gap: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {d.risk_score !== undefined && (
-                  <div>Risk Score: <span style={{ color: d.risk_score > 70 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{d.risk_score}/100</span></div>
-                )}
-                {d.confidence !== undefined && (
-                  <div>Confidence: <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{(d.confidence * 100).toFixed(0)}%</span></div>
-                )}
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', fontSize: '0.8rem' }}>
+                <div><span style={{ color: 'var(--text-muted)' }}>Technical trend</span><br /><strong>{technical.trend || 'Unavailable'}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>RSI 14</span><br /><strong>{typeof technical.rsi_14 === 'number' ? technical.rsi_14.toFixed(1) : '—'}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Risk assessment</span><br /><strong>{risk.summary || 'Not available'}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Execution gate</span><br /><strong>{execution.status || 'Not evaluated'}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Performance sample</span><br /><strong>{performance.sample_size ?? 0} confirmed trades</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>Execution</span><br /><strong style={{ color: 'var(--warning)' }}>Disabled · research only</strong></div>
+              </div>
+              <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Strategy confidence: {typeof strategy.confidence === 'number' ? `${(strategy.confidence * 100).toFixed(0)}%` : '—'}
               </div>
             </div>
           );

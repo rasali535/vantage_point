@@ -29,7 +29,7 @@ class WhipsawProtectionEngine:
         - ER < 0.3: High market noise, random walk, extreme whipsaw risk
         """
         if len(ohlc) < self.er_period + 1:
-            return 1.0, "INSUFFICIENT_DATA" # Default to safe but unconstrained
+            return 0.0, "INSUFFICIENT_DATA" # Missing history must never be treated as a strong trend
             
         close_prices = [float(candle.get("close", 0)) for candle in ohlc]
         
@@ -103,14 +103,14 @@ class WhipsawProtectionEngine:
         """
         if not ohlc:
             return {
-                "efficiency_ratio": 1.0,
+                "efficiency_ratio": 0.0,
                 "regime": "NO_DATA",
                 "atr": 0.0,
-                "whipsaw_risk": "LOW",
-                "cooldown_lock": False,
-                "signal_quality_index": 1.0,
-                "action_recommendation": "PROCEED",
-                "reason": "No market data available; bypassing filter."
+                "whipsaw_risk": "HIGH",
+                "cooldown_lock": True,
+                "signal_quality_index": 0.0,
+                "action_recommendation": "FORCE_HOLD",
+                "reason": "No market data available; fail-closed filter requires HOLD."
             }
 
         # 1. Kaufman ER
