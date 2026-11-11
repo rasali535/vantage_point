@@ -162,7 +162,7 @@ def simulate_order(
             "average_entry": str(_quantize(avg, D("0.00000001"))),
             "stop_loss": str(stop) if stop is not None else (position or {}).get("stop_loss"),
             "take_profit": str(target) if target is not None else (position or {}).get("take_profit"),
-            "opened_at": (position or {}).get("opened_at"),
+            "opened_at": (position or {}).get("opened_at") or datetime.now(timezone.utc).isoformat(),
         }
         updated["cash"] = str(_quantize(now_cash - total, MONEY_STEP))
     else:
