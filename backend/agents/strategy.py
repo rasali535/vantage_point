@@ -8,16 +8,17 @@ from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 class StrategyAgent:
     name = "strategy"
 
-    async def propose(self, market: dict, technical: dict, risk: dict) -> StrategyProposal:
+    async def propose(self, market: dict, technical: dict, risk: dict, performance: dict | None = None) -> StrategyProposal:
         response = await meta_ai.chat(
             model=os.getenv("TRADING_MODEL", DEFAULT_META_MODEL),
             system_prompt=(
                 "You are the Strategy agent. Synthesize the three supplied reports into a conservative "
                 "research proposal. Return JSON with action BUY, SELL or HOLD, rationale, confidence 0..1, "
                 "invalidation_conditions[]. If reports conflict, risk is unclear, or data is insufficient, HOLD. "
+                "Historical performance is context only and must not override current market evidence or risk controls. "
                 "This is never an execution instruction."
             ),
-            user_prompt=json.dumps({"market_intelligence": market, "technical_analysis": technical, "risk_assessment": risk}, default=str),
+            user_prompt=json.dumps({"market_intelligence": market, "technical_analysis": technical, "risk_assessment": risk, "historical_performance": performance or {}}, default=str),
         )
         try:
             raw = response.strip()

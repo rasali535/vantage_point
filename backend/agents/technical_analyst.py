@@ -43,8 +43,14 @@ class TechnicalAnalystAgent:
             fast, slow = _ema(closes, 9), _ema(closes, 21)
             rsi = _rsi(closes)
             true_ranges = []
-            for i in range(1, min(15, len(closes))):
-                true_ranges.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+            # Use the latest 14 true ranges; older candles should not determine
+            # the stop distance for a current autonomous paper entry.
+            for i in range(max(1, len(closes) - 14), len(closes)):
+                true_ranges.append(max(
+                    highs[i] - lows[i],
+                    abs(highs[i] - closes[i - 1]),
+                    abs(lows[i] - closes[i - 1]),
+                ))
             atr = sum(true_ranges) / len(true_ranges) if true_ranges else None
             signal = TradeAction.HOLD
             trend = "sideways"

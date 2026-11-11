@@ -80,7 +80,7 @@ class SixAgentArchitectureTests(unittest.TestCase):
     def test_performance_reports_insufficient_history_without_fabrication(self):
         result = PerformanceAgent().summarize([])
         self.assertIsNone(result["realized_pnl"])
-        self.assertEqual(result["status"], "insufficient_confirmed_history")
+        self.assertEqual(result["status"], "insufficient_closed_history")
 
     def test_whipsaw_filter_fails_closed_without_market_data(self):
         result = WhipsawProtectionEngine().evaluate_signal_quality([], [], "BUY")

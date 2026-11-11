@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Activity, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Activity, Bot, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 type Position = {
@@ -10,6 +10,26 @@ type Position = {
   market_value: string;
   stop_loss?: string | null;
   take_profit?: string | null;
+};
+
+type AutopilotStatus = {
+  enabled: boolean;
+  worker_configured: boolean;
+  worker_running: boolean;
+  paper_trading_enabled: boolean;
+  monitor_interval_seconds: number;
+  scan_interval_seconds: number;
+  pairs: string[];
+  execution_mode: string;
+  live_execution_enabled: boolean;
+};
+
+type AutopilotRun = {
+  timestamp: string;
+  status: string;
+  pairs_checked?: number;
+  results?: Array<{ pair: string; decision: string; reason?: string; fill?: { side: string; fill_price: string; quantity: string } }>;
+  protective_exits?: Array<{ pair: string; triggered_by?: string; fill_price?: string }>;
 };
 
 type Account = {
@@ -32,6 +52,8 @@ const PaperTrading: React.FC = () => {
   const [token, setToken] = useState('');
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
+  const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
+  const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRun[]>([]);
   const [pair, setPair] = useState('BTC/USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('0.001');
@@ -55,28 +77,58 @@ const PaperTrading: React.FC = () => {
     return data;
   }, [token]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (!token.trim()) {
-      setError('Enter the paper-trading access token configured by the operator.');
+      if (!silent) setError('Enter the paper-trading access token configured by the operator.');
       return;
     }
-    setBusy(true);
+    if (!silent) setBusy(true);
     setError('');
     try {
-      const [summary, history] = await Promise.all([
+      const [summary, history, autoStatus, autoRuns] = await Promise.all([
         request('account'),
         request('orders'),
+        request('autopilot'),
+        request('autopilot/runs'),
       ]);
       setAccount(summary);
       setOrders(Array.isArray(history) ? history : []);
-      setMessage('Paper account refreshed from MongoDB.');
+      setAutopilot(autoStatus);
+      setAutopilotRuns(Array.isArray(autoRuns) ? autoRuns : []);
+      if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
     } finally {
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
   }, [request, token]);
 
+  useEffect(() => {
+    if (!token.trim() || !autopilot?.enabled) return;
+    const timer = window.setInterval(() => { void refresh(true); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [autopilot?.enabled, token, refresh]);
+
+
+  const toggleAutopilot = async () => {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const action = autopilot?.enabled ? 'autopilot/stop' : 'autopilot/start';
+      await request(action, { method: 'POST' });
+      const latest = await request('autopilot');
+      setAutopilot(latest);
+      setMessage(latest.enabled
+        ? 'Autonomous paper trading started. It will analyse markets and manage virtual positions automatically.'
+        : 'New autonomous entries stopped. Protective exits remain monitored for open paper positions.');
+    } catch (err: any) {
+      setError(err.message || 'Unable to change autonomous trading state.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const monitor = async () => {
     setBusy(true);
@@ -133,7 +185,7 @@ const PaperTrading: React.FC = () => {
         <label htmlFor="paper-token" style={{ display: 'block', marginBottom: 8, color: 'var(--text-muted)' }}>Paper access token</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" style={{ flex: 1, minWidth: 220, padding: 12, borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-          <button className="btn btn-primary" onClick={refresh} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
+          <button className="btn btn-primary" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>The token stays in this page's memory and is not saved to browser storage.</p>
       </div>
@@ -153,6 +205,59 @@ const PaperTrading: React.FC = () => {
             <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8 }}>{value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="glass card" style={{ marginTop: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Bot size={20} /> Autonomous paper trader</h2>
+            <p style={{ color: 'var(--text-muted)', marginTop: 6 }}>
+              Automatically analyses configured markets, opens risk-sized virtual positions, closes on confirmed reversal signals, and monitors stop-loss/take-profit exits.
+            </p>
+          </div>
+          <span className={autopilot?.enabled ? 'badge badge-success' : 'badge'}>
+            {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
+          <button className={autopilot?.enabled ? 'btn' : 'btn btn-primary'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
+            {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
+          </button>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+          </span>
+        </div>
+        {autopilot && !autopilot.worker_running && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 10 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</p>}
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
+          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
+        </p>
+      </div>
+
+      <div className="glass card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginBottom: 12 }}>Autonomous analysis history</h2>
+        {!autopilotRuns.length ? <p style={{ color: 'var(--text-muted)' }}>No autonomous analysis cycles recorded yet.</p> : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {autopilotRuns.slice(0, 5).map((run, index) => (
+              <div key={`${run.timestamp}-${index}`} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>{new Date(run.timestamp).toLocaleString()}</strong>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{run.status}</span>
+                </div>
+                {run.results?.map((item, itemIndex) => (
+                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6, fontSize: 13 }}>
+                    <span>{item.pair} · {item.decision}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
+                  </div>
+                ))}
+                {run.protective_exits?.map((item, itemIndex) => (
+                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6, fontSize: 13 }}>
+                    Protective exit: {item.pair} · {item.triggered_by || 'triggered'} · {item.fill_price || ''}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid" style={{ marginTop: 8, alignItems: 'start' }}>
