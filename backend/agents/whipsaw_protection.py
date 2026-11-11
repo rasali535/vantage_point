@@ -130,10 +130,13 @@ class WhipsawProtectionEngine:
         
         if trades_history and target_action != "HOLD":
             # Search for the most recent valid trade
-            recent_trades = [t for t in trades_history if t.get("side") in ["buy", "sell", "expense"]]
+            recent_trades = [
+                t for t in trades_history
+                if str(t.get("side", "")).lower() in ["buy", "sell", "expense"]
+            ]
             if recent_trades:
                 last_trade = recent_trades[0]
-                last_side = last_trade.get("side")
+                last_side = str(last_trade.get("side", "")).lower()
                 
                 # Check if it was an opposite trade
                 if (target_action.lower() == "buy" and last_side == "sell") or \
