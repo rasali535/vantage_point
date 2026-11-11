@@ -215,7 +215,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         return {"pair": pair, "decision": "HOLD", "reason": "Autonomous confidence threshold is outside the safe 0.5–1.0 range."}
     confidence = D(str(cycle.strategy.confidence))
     technical_signal = cycle.technical_analysis.signal
-    signal_report = whipsaw_protection.evaluate_signal_quality(candles, [], action.value)
+    signal_report = whipsaw_protection.evaluate_signal_quality(candles, account.get("orders", []), action.value)
     if signal_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"}:
         action = TradeAction.HOLD
 
