@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from paper_trading.autopilot import calculate_spot_quantity, configured_pairs
 from paper_trading.engine import PaperTradeError
+from agents.performance import PerformanceAgent
 
 
 class AutonomousPaperSizingTests(unittest.TestCase):
@@ -49,13 +50,22 @@ class AutonomousPaperSizingTests(unittest.TestCase):
         with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": "BTC/USD,ETH/USD,SOL/USD"}, clear=False):
             self.assertEqual(configured_pairs(), ["BTC/USD", "ETH/USD", "SOL/USD"])
 
-    def test_empty_or_malformed_pair_configuration_fails_closed(self):
-        with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": " "}, clear=False):
-            with self.assertRaises(PaperTradeError):
-                configured_pairs()
-        with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": "BTCUSD"}, clear=False):
-            with self.assertRaises(PaperTradeError):
-                configured_pairs()
+    def test_empty_or_malformed_or_non_usd_pair_configuration_fails_closed(self):
+        for value in (" ", "BTCUSD", "EUR/JPY"):
+            with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": value}, clear=False):
+                with self.assertRaises(PaperTradeError):
+                    configured_pairs()
+
+    def test_performance_agent_uses_realized_paper_exit_fills_only(self):
+        result = PerformanceAgent().summarize([
+            {"status": "filled", "execution_mode": "paper", "side": "SELL", "realized_pnl_usd": "2.50"},
+            {"status": "filled", "execution_mode": "paper", "side": "SELL", "realized_pnl_usd": "-1.00"},
+            {"status": "filled", "execution_mode": "paper", "side": "BUY", "realized_pnl_usd": None},
+            {"status": "filled", "execution_mode": "live", "side": "SELL", "realized_pnl_usd": "99"},
+        ])
+        self.assertEqual(result["sample_size"], 2)
+        self.assertEqual(result["realized_pnl"], 1.5)
+        self.assertEqual(result["win_rate_pct"], 50.0)
 
 
 if __name__ == "__main__":
