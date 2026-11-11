@@ -73,6 +73,13 @@ class MetaAIClient:
                     for item in data
                     if isinstance(item, dict) and isinstance(item.get("id"), str)
                 ] if isinstance(data, list) else []
+                print(
+                    "meta_model_api_models_probe "
+                    f"status={response.status_code} target_model={selected_model} "
+                    f"target_model_listed={selected_model in model_ids} "
+                    f"model_count={len(model_ids)}",
+                    flush=True,
+                )
                 logger.info(
                     "meta_model_api_models_probe status=%s target_model=%s "
                     "target_model_listed=%s model_count=%s model_ids=%s",
@@ -93,6 +100,12 @@ class MetaAIClient:
                         error_type = error.get("type")
                 except (ValueError, TypeError):
                     pass
+                print(
+                    "meta_model_api_models_probe "
+                    f"status={response.status_code} target_model={selected_model} "
+                    f"error_code={error_code} error_type={error_type}",
+                    flush=True,
+                )
                 logger.warning(
                     "meta_model_api_models_probe status=%s target_model=%s "
                     "error_code=%s error_type=%s",
@@ -102,6 +115,11 @@ class MetaAIClient:
                     str(error_type)[:120] if error_type is not None else None,
                 )
         except (httpx.HTTPError, ValueError, TypeError) as exc:
+            print(
+                "meta_model_api_models_probe_failed "
+                f"target_model={selected_model} error_type={type(exc).__name__}",
+                flush=True,
+            )
             logger.warning(
                 "meta_model_api_models_probe_failed target_model=%s error_type=%s",
                 selected_model,
@@ -113,7 +131,9 @@ class MetaAIClient:
             raise RuntimeError("MODEL_API_KEY is not configured.")
 
         selected_model = model or DEFAULT_META_MODEL
+        print(f"meta_model_api_probe_enter model={selected_model}", flush=True)
         await self._probe_model_catalog(selected_model)
+        print(f"meta_model_api_probe_exit model={selected_model}", flush=True)
         payload = {
             "model": selected_model,
             "messages": [
