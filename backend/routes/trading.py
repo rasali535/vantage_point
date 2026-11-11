@@ -20,6 +20,7 @@ from paper_trading.engine import (
     PaperTradeError, account_summary, initial_account, simulate_order,
     evaluate_protective_triggers,
 )
+from paper_trading.autopilot import autopilot_status, set_autopilot_enabled
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -402,3 +403,34 @@ async def monitor_paper_positions(x_paper_token: str | None = Header(default=Non
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Paper protective monitoring is temporarily unavailable.") from exc
+
+
+
+@router.get("/paper/autopilot")
+async def get_paper_autopilot_status(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        return await autopilot_status(db)
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/paper/autopilot/start")
+async def start_paper_autopilot(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        return await set_autopilot_enabled(db, True)
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+
+
+@router.post("/paper/autopilot/stop")
+async def stop_paper_autopilot(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        return await set_autopilot_enabled(db, False)
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
