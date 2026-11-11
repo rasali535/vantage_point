@@ -4,6 +4,7 @@ All fills are simulations against a supplied public-market reference price.
 This module has no Kraken client, credentials, network access, or live-order path.
 """
 from copy import deepcopy
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 import os
 from typing import Any
@@ -58,6 +59,7 @@ def initial_account(initial_cash: Any) -> dict:
         "initial_equity": str(cash),
         "peak_equity": str(cash),
         "day_start_equity": str(cash),
+        "day_start_date": datetime.now(timezone.utc).date().isoformat(),
         "realized_pnl": "0",
         "execution_enabled": False,
     }
@@ -81,6 +83,7 @@ def simulate_order(
     idempotency_key: str,
     stop_loss_price: Any = None,
     risk_engine: DeterministicRiskEngine | None = None,
+    portfolio_prices: dict[str, Any] | None = None,
 ) -> tuple[dict, dict]:
     """Return (new account, simulated fill); caller persists atomically."""
     if not isinstance(idempotency_key, str) or not idempotency_key.strip() or len(idempotency_key) > 128:
@@ -120,11 +123,17 @@ def simulate_order(
             raise PaperTradeError("Risk policy is missing or invalid; paper BUY rejected.")
         if policy.require_stop_loss and stop is None:
             raise PaperTradeError("A stop-loss is required by the configured risk policy.")
-        prices = {pair: price}
+        prices = dict(portfolio_prices or {})
+        prices[pair] = price
         equity = account_equity(updated, prices)
         initial = dec(updated.get("initial_equity", equity), "initial_equity")
         peak = max(dec(updated.get("peak_equity", equity), "peak_equity"), equity)
+        today = datetime.now(timezone.utc).date().isoformat()
+        if updated.get("day_start_date") != today:
+            updated["day_start_date"] = today
+            updated["day_start_equity"] = str(equity)
         day_start = dec(updated.get("day_start_equity", initial), "day_start_equity")
+        updated["peak_equity"] = str(peak)
         daily_loss = max(D("0"), (day_start - equity) / day_start * D("100")) if day_start > 0 else D("0")
         drawdown = max(D("0"), (peak - equity) / peak * D("100")) if peak > 0 else D("0")
         positions_count = sum(1 for p in positions.values() if dec(p["quantity"], "position quantity") > 0)
@@ -141,7 +150,7 @@ def simulate_order(
         old_qty = dec(position["quantity"], "position quantity") if position else D("0")
         old_cost = dec(position["average_entry"], "average_entry") * old_qty if position else D("0")
         new_qty = old_qty + qty
-        avg = (old_cost + gross) / new_qty
+        avg = (old_cost + total) / new_qty
         positions[pair] = {
             "quantity": str(_quantize(new_qty, QTY_STEP)),
             "average_entry": str(_quantize(avg, D("0.00000001"))),
