@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Activity, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
@@ -77,10 +77,6 @@ const PaperTrading: React.FC = () => {
     }
   }, [request, token]);
 
-  useEffect(() => {
-    if (!token.trim()) return;
-    refresh();
-  }, [token, refresh]);
 
   const monitor = async () => {
     setBusy(true);
