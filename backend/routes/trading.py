@@ -434,3 +434,12 @@ async def stop_paper_autopilot(x_paper_token: str | None = Header(default=None))
         return await set_autopilot_enabled(db, False)
     except PaperTradeError as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
+
+
+
+@router.get("/paper/autopilot/runs")
+async def get_paper_autopilot_runs(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    runs = await db.paper_autopilot_runs.find().sort("timestamp", -1).limit(30).to_list(length=30)
+    return [serialize_document(item) for item in runs]
