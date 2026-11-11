@@ -267,6 +267,10 @@ async def submit_paper_order(
         reference_price = ticker["last"]
         for _attempt in range(5):
             account = await _get_or_create_paper_account(db)
+            portfolio_prices = {}
+            for held_pair in account.get("positions", {}).keys():
+                held_ticker = await get_kraken_agent().get_ticker(held_pair)
+                portfolio_prices[held_pair] = held_ticker["last"]
             updated, fill = simulate_order(
                 account,
                 pair=payload.pair,
@@ -276,6 +280,7 @@ async def submit_paper_order(
                 idempotency_key=payload.idempotency_key,
                 stop_loss_price=payload.stop_loss_price,
                 risk_engine=DeterministicRiskEngine(),
+                portfolio_prices=portfolio_prices,
             )
             if fill.get("duplicate"):
                 return {"fill": fill, "account": account_summary(account), "execution_mode": "paper"}
