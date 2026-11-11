@@ -62,10 +62,10 @@ Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private
 
 AI model and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform currently runs in **analysis-only mode**. No live or paper orders can be submitted.
 
-Before execution can be enabled, the following must be implemented and tested:
+The deterministic risk engine is implemented as a standalone component and rejects proposals when its policy is missing or invalid. It is not yet wired to any order-submission path; all execution remains disabled. Before execution can be enabled, the following must be implemented and tested:
 
 - Authentication and authorization for every state-changing route.
-- Operator-configured limits for the deterministic risk engine. Missing limits cause every proposal to be rejected; no unconfirmed defaults are applied.
+- Integration of the deterministic risk engine into every order path, using operator-configured limits. Missing limits must continue to reject every proposal; no unconfirmed defaults are applied.
 - A kill switch and explicit operator approval for any transition to live execution.
 - Idempotent order submission and exchange-confirmed order/fill reconciliation.
 - Durable audit records for every proposal, approval, rejection, order attempt, and fill.
