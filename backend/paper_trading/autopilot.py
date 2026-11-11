@@ -374,6 +374,9 @@ async def _worker_loop() -> None:
     last_scan = 0.0
     while True:
         try:
+            if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
+                await asyncio.sleep(monitor_interval)
+                continue
             db = await get_database()
             state = await db.paper_runtime.find_one({"_id": "autopilot"})
             if os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true" and os.getenv("PAPER_INITIAL_BALANCE_USD"):
