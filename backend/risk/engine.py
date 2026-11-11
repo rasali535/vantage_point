@@ -96,7 +96,12 @@ class DeterministicRiskEngine:
             proposal.daily_loss_pct, proposal.drawdown_pct, proposal.leverage,
         ]
         if any(not value.is_finite() for value in numeric_values):
-            reasons.append("All numeric proposal values must be finite.")
+            return {
+                "approved": False,
+                "status": "rejected",
+                "reasons": ["All numeric proposal values must be finite."],
+                "execution_enabled": False,
+            }
         if side not in {"BUY", "SELL"}:
             reasons.append("Order side must be BUY or SELL.")
         if not proposal.pair.strip():
@@ -115,7 +120,12 @@ class DeterministicRiskEngine:
             reasons.append("A stop-loss price is required by policy.")
         elif stop_loss is not None:
             if not stop_loss.is_finite():
-                reasons.append("Stop-loss price must be finite.")
+                return {
+                    "approved": False,
+                    "status": "rejected",
+                    "reasons": ["Stop-loss price must be finite."],
+                    "execution_enabled": False,
+                }
             elif stop_loss <= 0:
                 reasons.append("Stop-loss price must be positive.")
             elif side == "BUY" and stop_loss >= proposal.entry_price:
