@@ -54,7 +54,13 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_API_TOKEN` | Server-side secret required in the `X-Paper-Token` header |
 | `PAPER_INITIAL_BALANCE_USD` | Explicit starting virtual USD balance; no default is applied |
 | `PAPER_FEE_RATE` | Simulated fee fraction; defaults to `0.0026` (0.26%) |
-| `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `5`
+| `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `5` |
+| `PAPER_AUTOTRADING_ALLOWED` | Server-side permission for autonomous paper trading; defaults to `true`, but the operator must still start it |
+| `PAPER_AUTOTRADE_PAIRS` | Comma-separated USD-quoted Kraken spot pairs; defaults to `TRADING_PAIR` or `BTC/USD` |
+| `PAPER_AUTOTRADING_SCAN_SECONDS` | AI analysis interval; defaults to `300` seconds |
+| `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `20` seconds |
+| `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum AI strategy confidence; defaults to `0.70` |
+| `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Kraken candle interval in minutes; defaults to `60` |
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
@@ -79,7 +85,7 @@ Meta Model API and transcription provider failures are returned as service error
 The Paper Trading workspace displays virtual equity, cash, positions and simulated fills. Its authenticated autonomous supervisor can analyse configured Kraken USD-quoted spot pairs, calculate a risk-sized position, simulate entries, close a held position on a confirmed opposite signal, and monitor stored stop-loss/take-profit exits. Start/stop controls are protected by the paper token. Stopping the supervisor blocks new entries while continuing protective monitoring for already-open virtual positions. The worker uses a MongoDB lease to reduce duplicate execution across API instances. The current worker runs inside the FastAPI process; a Render Free web service may sleep while idle, so reliable continuous operation requires an always-on deployment. This phase does not yet automate Forex pairs; the multi-market FX adapter and FX-specific sizing must be completed first. Before any live execution can be enabled, the following must be implemented and tested:
 
 - Authentication and authorization for every state-changing route.
-- Integration of the deterministic risk engine into every order path, using operator-configured limits. Missing limits must continue to reject every proposal; no unconfirmed defaults are applied.
+- A separately reviewed deterministic risk gate for any future live order path, using operator-configured limits. Missing limits must continue to reject every proposal; no unconfirmed defaults are applied.
 - A kill switch and explicit operator approval for any transition to live execution.
 - Idempotent live order submission and exchange-confirmed order/fill reconciliation.
 - Durable audit records for every proposal, approval, rejection, order attempt, and fill.
