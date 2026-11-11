@@ -1,365 +1,165 @@
-from fastapi import APIRouter, Depends, Request
+from datetime import datetime, timezone
 import os
-from typing import List, Dict
+from typing import Any, Dict
+
+from fastapi import APIRouter, HTTPException, Request
+
 from agents.kraken import KrakenAgent
 from agents.reasoning import boardroom
-from agents.multimodal import multimodal_agent
 from agents.whipsaw_protection import whipsaw_protection
-import asyncio
-from datetime import datetime
 from database import get_database
-import traceback
+from risk.engine import RiskPolicy
 
 router = APIRouter()
-
-# Lazy load agents for Vercel stability
 _kraken_agent = None
 
-def get_kraken_agent():
+
+def get_kraken_agent() -> KrakenAgent:
     global _kraken_agent
     if _kraken_agent is None:
         _kraken_agent = KrakenAgent()
     return _kraken_agent
 
-# Track active trades for the dashboard (with DB fallback)
-trades_history = [] 
 
-# In-memory store for deliberation history (resets on restart, use DB for persistence)
-deliberation_history = []
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def serialize_document(document: Dict[str, Any]) -> Dict[str, Any]:
+    if "_id" in document:
+        document["_id"] = str(document["_id"])
+    return document
+
 
 @router.get("/status")
 async def get_trading_status():
-    try:
-        k_agent = get_kraken_agent()
-        db = await get_database()
-        
-        # 1. Get balance (Defensive)
-        balance = await k_agent.get_balance()
-        
-        # 2. Get history from DB (or fallback to memory)
-        history = trades_history
-        if db is not None:
-            try:
-                db_history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(length=20)
-                if db_history:
-                    for h in db_history:
-                        h["id"] = str(h.pop("_id"))
-                        if "timestamp" in h and isinstance(h["timestamp"], str):
-                            try:
-                                dt = datetime.fromisoformat(h["timestamp"])
-                                h["time"] = dt.strftime("%H:%M:%S")
-                            except: pass
-                    history = db_history
-            except: pass
-            
-        # 3. Dynamic Strategy Name based on env
-        research_model = os.getenv("RESEARCH_MODEL", "Qwen").split("/")[-1]
-        trading_model = os.getenv("TRADING_MODEL", "DeepSeek").split("/")[-1]
-        
-        # 4. Compute PnL (Mock computation based on history)
-        pnl_val = sum([h.get("volume", 0) * 10 for h in history if h.get("side") == "buy"])
-        pnl_str = f"+${pnl_val:,.2f} ({min(5.4, len(history)*0.8):.2f}%)"
-        
-        return {
-            "balance": balance,
-            "history": history,
-            "pnl_24h": pnl_str if pnl_val > 0 else "+$1,242.40 (1.2%)",
-            "active_strategy": f"Boardroom Council ({trading_model} + {research_model} + Gemini)"
-        }
-    except Exception as e:
-        print(f"CRITICAL ERROR in get_trading_status: {e}")
-        traceback.print_exc()
-        return {
-            "balance": {"USD": 100000.0, "holdings": {}},
-            "history": [{"id": "m1", "symbol": "AAPL/USD", "side": "buy", "volume": 10, "price": 150.0, "time": "12:00:00", "status": "filled", "reasoning": "Strategy Analysis"}],
-            "pnl_24h": "+$0.00 (0.0%)",
-            "active_strategy": "Safe Mode (Offline)"
-        }
+    db = await get_database()
+    history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(length=20)
+
+    balance = None
+    account_status = "disabled"
+    agent = get_kraken_agent()
+    if agent.account_reads_enabled:
+        try:
+            balance = await agent.get_balance()
+            account_status = "connected"
+        except Exception:
+            account_status = "unavailable"
+
+    research_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
+    trading_model = os.getenv("TRADING_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
+    risk_policy_configured = RiskPolicy.from_env() is not None
+    return {
+        "mode": "analysis_only",
+        "execution_enabled": False,
+        "risk_policy_status": "configured" if risk_policy_configured else "not_configured",
+        "exchange_status": "public_market_data_only",
+        "account_status": account_status,
+        "balance": balance,
+        "history": [serialize_document(item) for item in history],
+        "pnl_24h": None,
+        "active_strategy": f"Market Analysis ({trading_model} + {research_model})",
+        "data_source": "kraken_spot_rest",
+    }
+
 
 @router.get("/ledger")
 async def get_ledger():
-    """Detailed transaction ledger for the sidebar nav"""
     db = await get_database()
-    if db is not None:
-        history = await db.trading_ledger.find().sort("timestamp", -1).limit(50).to_list(length=50)
-        for h in history: h["_id"] = str(h["_id"])
-        return history
-    return trades_history
+    history = await db.trading_ledger.find().sort("timestamp", -1).limit(100).to_list(length=100)
+    return [serialize_document(item) for item in history]
+
 
 @router.get("/audit")
 async def get_audit_logs():
-    """Audit trail for SOX compliance tracking"""
     db = await get_database()
-    if db is not None:
-        logs = await db.audit_logs.find().sort("timestamp", -1).limit(50).to_list(length=50)
-        for l in logs: l["_id"] = str(l["_id"])
-        return logs
-    
-    # Static fallback with better contextual logs than the frontend mock
-    return [
-        {
-            "id": "a1", "time": "10:45 AM", "agent": "CEO", "action": "Strategy Rebalance",
-            "reasoning": "Risk score exceeded 75. Executing partial liquidation of AAPLx.",
-            "status": "success", "timestamp": datetime.now().isoformat()
-        },
-        {
-            "id": "a2", "time": "10:46 AM", "agent": "Risk", "action": "Liquidity Check",
-            "reasoning": "Vultr node latency within bounds. Liquidity depth confirmed at $42M.",
-            "status": "success", "timestamp": datetime.now().isoformat()
-        }
-    ]
+    logs = await db.audit_logs.find().sort("timestamp", -1).limit(100).to_list(length=100)
+    return [serialize_document(item) for item in logs]
+
 
 @router.get("/boardroom")
 async def get_boardroom_history():
-    """Deliberation history for the council"""
     db = await get_database()
-    history = []
-    if db is not None:
-        try:
-            db_history = await db.boardroom_history.find().sort("timestamp", -1).limit(20).to_list(length=20)
-            if db_history:
-                for h in db_history:
-                    h["id"] = str(h.pop("_id"))
-                history = db_history
-        except Exception as e:
-            print(f"Error fetching boardroom history: {e}")
-    
-    all_history = deliberation_history + history
-    if not all_history:
-        # High fidelity boardroom fallbacks so boardroom is never empty
-        all_history = [
-            {
-                "id": "b1",
-                "symbol": "USD/OUT",
-                "action": "EXPENSE",
-                "timestamp": datetime.now().isoformat(),
-                "reasoning": "BOARDROOM CONSENSUS: CEO, Risk, and General Counsel unanimously approved the Vultr Cloud Infrastructure treasury obligation. Validated invoice authenticity and scheduled the $1,450.00 outflow from the corporate liquid float.",
-                "risk_score": 12,
-                "confidence": 0.98
-            },
-            {
-                "id": "b2",
-                "symbol": "AAPL/USD",
-                "action": "BUY",
-                "timestamp": datetime.now().isoformat(),
-                "reasoning": "BOARDROOM CONSENSUS: CEO identified short-term AAPLx momentum. Risk Officer verified portfolio leverage is within SOX threshold boundaries. Macro Strategist confirmed relative strength index supports asset accumulation.",
-                "risk_score": 42,
-                "confidence": 0.95
-            }
-        ]
-    return all_history
+    history = await db.boardroom_history.find().sort("timestamp", -1).limit(50).to_list(length=50)
+    return [serialize_document(item) for item in history]
 
-async def scan_and_trade_impl():
-    k_agent = get_kraken_agent()
+
+async def scan_and_analyze() -> Dict[str, Any]:
+    # Database availability is a prerequisite for an auditable scan.
     db = await get_database()
-    
-    trading_pair = os.getenv("TRADING_PAIR", "AAPL/USD")
-    trade_size = float(os.getenv("TRADE_SIZE_USD", "500"))
-    
-    # 1. Fetch live market data
-    ticker, ohlc, paper_status = await asyncio.gather(
+    k_agent = get_kraken_agent()
+    trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
+
+    ticker, candles = await __import__("asyncio").gather(
         k_agent.get_ticker(trading_pair),
         k_agent.get_ohlc(trading_pair),
-        k_agent.get_paper_status()
     )
-    
-    # Fetch recent ledger history for cooldown checks
-    recent_history = trades_history
-    if db is not None:
-        try:
-            db_history = await db.trading_ledger.find().sort("timestamp", -1).limit(10).to_list(length=10)
-            if db_history:
-                recent_history = db_history
-        except:
-            pass
 
-    # 1b. Run Anti-Whipsaw Filter Audit before deliberation
-    whipsaw_report = whipsaw_protection.evaluate_signal_quality(ohlc, recent_history, "HOLD")
-    
-    # 2. Boardroom Deliberation (incorporating the whipsaw and signal quality context)
-    decision = await boardroom.deliberate(ticker, ohlc, trading_pair, whipsaw_report)
-    
-    # 2b. Re-evaluate and enforce hard cooldown lock / whipsaw lock post-deliberation
-    proposed_action = decision.get("action", "HOLD")
-    whipsaw_report_final = whipsaw_protection.evaluate_signal_quality(ohlc, recent_history, proposed_action)
-    
-    if whipsaw_report_final.get("action_recommendation") == "FORCE_HOLD" and proposed_action != "HOLD":
+    baseline = whipsaw_protection.evaluate_signal_quality(candles, [], "HOLD")
+    decision = await boardroom.deliberate(ticker, candles, trading_pair, baseline)
+    proposed_action = str(decision.get("action", "HOLD")).upper()
+
+    final_report = whipsaw_protection.evaluate_signal_quality(candles, [], proposed_action)
+    if final_report.get("action_recommendation") == "FORCE_HOLD" and proposed_action != "HOLD":
         decision["action"] = "HOLD"
-        decision["reasoning"] = f"[WHIPSAW PROTECT ACTIVE] Downgraded {proposed_action} to HOLD. {whipsaw_report_final.get('reason')}"
-        decision["risk_score"] = int(whipsaw_report_final.get("signal_quality_index", 10.0))
-        decision["confidence"] = 1.0
-        
-    delib_entry = {
-        **decision, 
-        "timestamp": datetime.now().isoformat(), 
+        decision["reasoning"] = (
+            f"[WHIPSAW PROTECTION] Proposed {proposed_action} changed to HOLD. "
+            f"{final_report.get('reason', 'Signal quality threshold not met.')}"
+        )
+
+    timestamp = utc_now()
+    deliberation = {
+        **decision,
+        "timestamp": timestamp,
         "pair": trading_pair,
-        "signal_quality": whipsaw_report_final.get("signal_quality_index"),
-        "whipsaw_risk": whipsaw_report_final.get("whipsaw_risk")
+        "signal_quality": final_report.get("signal_quality_index"),
+        "whipsaw_risk": final_report.get("whipsaw_risk"),
+        "market_data_source": "kraken",
+        "execution_status": "disabled",
     }
-    deliberation_history.insert(0, delib_entry)
-    if db is not None:
-        try:
-            await db.boardroom_history.insert_one(dict(delib_entry))
-        except Exception as e:
-            print(f"Error inserting boardroom history to DB: {e}")
-    
-    # 3. Audit Log Entry (Include signal quality metrics in public audit trails)
-    audit_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "agent": "Boardroom CEO",
-        "action": f"Autonomous {decision.get('action')}",
-        "reasoning": f"{decision.get('reasoning')} | Signal Quality Index: {whipsaw_report_final.get('signal_quality_index')}% (Risk: {whipsaw_report_final.get('whipsaw_risk')})",
-        "status": "success"
+    audit = {
+        "timestamp": timestamp,
+        "agent": "Boardroom",
+        "action": f"Proposed {str(decision.get('action', 'HOLD')).upper()}",
+        "reasoning": str(decision.get("reasoning", "")),
+        "status": "analysis_recorded",
+        "execution_enabled": False,
     }
-    if db is not None:
-        try:
-            await db.audit_logs.insert_one(audit_entry)
-        except Exception as e:
-            print(f"Error inserting audit log: {e}")
-    
-    # 4. Execute Trade
-    trade_res = None
-    if decision.get("action") != "HOLD":
-        last_price = float(ticker.get("last", 0))
-        if last_price > 0:
-            volume = round(trade_size / last_price, 6)
-            trade_res = await k_agent.execute_trade(trading_pair, decision.get("action"), volume)
-            
-            trade_entry = {
-                "order_id": trade_res.get("order_id") if trade_res else f"TX-{os.urandom(4).hex().upper()}",
-                "symbol": trading_pair,
-                "side": decision.get("action").lower(),
-                "volume": volume,
-                "price": last_price,
-                "timestamp": datetime.now().isoformat(),
-                "status": "filled",
-                "reasoning": decision.get("reasoning")
-            }
-            if db is not None:
-                try:
-                    await db.trading_ledger.insert_one(trade_entry)
-                except Exception as e:
-                    print(f"Error inserting trade ledger: {e}")
-            trades_history.insert(0, trade_entry)
-            
+
+    # If either durable write fails, the scan fails. It must not report success
+    # with an incomplete audit trail.
+    await db.boardroom_history.insert_one(dict(deliberation))
+    await db.audit_logs.insert_one(dict(audit))
+
     return {
         "pair": trading_pair,
+        "ticker": ticker,
         "decision": decision,
-        "trade": trade_res,
-        "signal_quality_report": whipsaw_report_final
+        "trade": None,
+        "execution_status": "disabled",
+        "signal_quality_report": final_report,
     }
 
+
 @router.post("/scan")
-async def scan_and_trade():
-    """Vantage-Point 2.0: Multi-Agent Boardroom Loop with Anti-Whipsaw Protection (Guaranteed 8s Timeout Wrapper)"""
+async def scan_and_analyze_route():
     try:
-        return await asyncio.wait_for(scan_and_trade_impl(), timeout=8.0)
-    except asyncio.TimeoutError:
-        import random
-        trading_pair = os.getenv("TRADING_PAIR", "AAPL/USD")
-        
-        fallback_decision = {
-            "action": "HOLD",
-            "reasoning": "[SAFETY FALLBACK] Scan execution timed out. Treasury capital safeguarded by forcing hold.",
-            "confidence": 0.90,
-            "risk_score": 2
-        }
-        
-        fallback_whipsaw_report = {
-            "efficiency_ratio": 0.25,
-            "regime": "Noisy / Whipsaw Regime",
-            "atr": 4.5,
-            "pct_volatility": 2.1,
-            "whipsaw_risk": "HIGH",
-            "action_recommendation": "FORCE_HOLD",
-            "signal_quality_index": 15.0,
-            "reason": "Execution timeout safety threshold triggered."
-        }
-        
-        delib_entry = {
-            **fallback_decision, 
-            "timestamp": datetime.now().isoformat(), 
-            "pair": trading_pair,
-            "signal_quality": 15.0,
-            "whipsaw_risk": "HIGH"
-        }
-        deliberation_history.insert(0, delib_entry)
-        
-        audit_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "agent": "Boardroom CEO",
-            "action": "Autonomous HOLD",
-            "reasoning": "[SAFETY FALLBACK] Scan execution timed out. Safeguarding capital.",
-            "status": "success"
-        }
-        
-        db = await get_database()
-        if db is not None:
-            try:
-                await db.boardroom_history.insert_one(dict(delib_entry))
-                await db.audit_logs.insert_one(audit_entry)
-            except:
-                pass
-                
-        return {
-            "pair": trading_pair,
-            "decision": fallback_decision,
-            "trade": None,
-            "signal_quality_report": fallback_whipsaw_report
-        }
+        return await scan_and_analyze()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Do not expose provider errors or fall back to fabricated prices.
+        raise HTTPException(
+            status_code=503,
+            detail="Market analysis is temporarily unavailable. No order was submitted.",
+        ) from exc
+
 
 @router.post("/manual")
 async def manual_trade(request: Request):
-    data = await request.json()
-    action = data.get("action") 
-    pair = data.get("pair", "AAPL/USD")
-    volume = float(data.get("volume", 0.01))
-    
-    k_agent = get_kraken_agent()
-    result = await k_agent.execute_trade(pair, action.lower(), volume)
-    
-    price = float(result.get("price", 180.0 if "AAPL" in pair else 75000.0))
-        
-    db = await get_database()
-    trade_entry = {
-        "order_id": result.get("order_id") if result else f"MAN-{os.urandom(3).hex().upper()}",
-        "symbol": pair,
-        "side": action.lower(),
-        "volume": volume,
-        "price": price,
-        "timestamp": datetime.now().isoformat(),
-        "status": "filled",
-        "reasoning": "Manual Override"
-    }
-    if db is not None:
-        await db.trading_ledger.insert_one(trade_entry)
-    trades_history.insert(0, trade_entry)
-        
-    return {"status": "success", "trade": result}
-
-@router.post("/invoice")
-async def process_invoice():
-    """Multimodal Extraction: Ingest invoice and update ledger"""
-    extraction = await multimodal_agent.extract_invoice("sample_invoice.pdf")
-    
-    amount = float(extraction.get("total_amount", 0.0))
-    
-    k_agent = get_kraken_agent()
-    k_agent.add_expense(amount)
-    
-    db = await get_database()
-    trade_entry = {
-        "order_id": f"INV-{os.urandom(3).hex().upper()}",
-        "symbol": "USD/OUT",
-        "side": "expense",
-        "volume": amount,
-        "price": 1.0,
-        "timestamp": datetime.now().isoformat(),
-        "status": "processed",
-        "reasoning": f"Automated extraction for {extraction.get('vendor_name')}. Due: {extraction.get('due_date')}"
-    }
-    if db is not None:
-        await db.trading_ledger.insert_one(trade_entry)
-    trades_history.insert(0, trade_entry)
-        
-    return {"status": "success", "extraction": extraction, "meeting_id": trade_entry["order_id"]}
+    # Manual execution remains disabled until authentication, a deterministic
+    # risk gate, idempotency, and exchange-confirmed order lifecycle are ready.
+    raise HTTPException(
+        status_code=423,
+        detail="Trade execution is disabled during the safety and exchange-adapter build.",
+    )

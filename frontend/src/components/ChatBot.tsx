@@ -13,7 +13,7 @@ const ChatBot = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I am ActionBot. How can I help you with trading news, DeepMind updates, or your workspace today?' }
+    { role: 'assistant', content: 'Hello! I am the Ras Ali AI Trader assistant. Ask me about crypto markets, strategy analysis, or risk controls.' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,7 +106,7 @@ const ChatBot = () => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 10px var(--success)' }}></div>
-          <span style={{ fontWeight: 600 }}>ActionBot</span>
+          <span style={{ fontWeight: 600 }}>Ras Ali Assistant</span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button onClick={() => setIsMinimized(!isMinimized)} className="btn-icon">
@@ -182,7 +182,7 @@ const ChatBot = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask about DeepMind, Trading, or help..."
+                placeholder="Ask about crypto markets, analysis, or risk..."
                 style={{
                   width: '100%',
                   padding: '0.75rem 3rem 0.75rem 1rem',

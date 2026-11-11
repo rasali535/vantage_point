@@ -1,62 +1,73 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+from contextlib import asynccontextmanager
 import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 
 import routes.meetings
 import routes.trading
 import routes.chat
+from database import close_database, ping_database
 
-app = FastAPI(title="ActionPilot API")
 
-# CORS setup for React frontend
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await close_database()
+
+
+app = FastAPI(title="Ras Ali AI Trader API", version="0.2.0", lifespan=lifespan)
+
+
+@app.exception_handler(PyMongoError)
+async def mongodb_unavailable_handler(request, exc):
+    # A cached client can lose its Atlas connection after startup. Normalize
+    # subsequent driver failures to 503 instead of leaking internal errors.
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "MongoDB is temporarily unavailable. No trading action was executed."},
+    )
+
+# Explicit origins only. Add production and preview frontend origins through
+# CORS_ORIGINS (comma-separated) in the deployment environment.
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://actionpilot.vercel.app",
+]
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", ",".join(_default_origins)).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins for Vercel deployment
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(routes.meetings.router, prefix="/api/meetings", tags=["Meetings"])
 app.include_router(routes.trading.router, prefix="/api/trading", tags=["Trading"])
 app.include_router(routes.chat.router, prefix="/api/chat", tags=["Chat"])
 
-# Mock DB Models
-class Task(BaseModel):
-    id: str
-    meeting_id: str
-    title: str
-    owner: str
-    status: str
-    reasoning: str
-
-class Meeting(BaseModel):
-    id: str
-    title: str
-    date: str
-    status: str
 
 @app.get("/")
 async def root():
-    return {"message": "ActionPilot API is running"}
-
-@app.get("/meetings", response_model=List[Meeting])
-async def get_meetings():
-    return [
-        {"id": "1", "title": "Quarterly Sales Sync", "date": "2026-05-13", "status": "processed"},
-        {"id": "2", "title": "Product Roadmap Review", "date": "2026-05-12", "status": "pending_approval"}
-    ]
+    return {"message": "Ras Ali AI Trader API", "status": "online"}
 
 
-@app.get("/tasks/{meeting_id}", response_model=List[Task])
-async def get_tasks(meeting_id: str):
-    return [
-        {"id": "t1", "meeting_id": meeting_id, "title": "Send follow-up email to stakeholders", "owner": "Alice", "status": "pending", "reasoning": "Determined from meeting summary: Alice committed to follow up by Friday."},
-        {"id": "t2", "meeting_id": meeting_id, "title": "Update CRM with new deal stage", "owner": "System", "status": "completed", "reasoning": "Autonomous action: Meeting confirmed deal moved to 'Proposal' stage."}
-    ]
+@app.get("/health")
+@app.get("/api/health")
+async def health():
+    # Ping on each health request so Atlas restarts are visible immediately.
+    await ping_database()
+    return {"status": "ready", "database": "connected"}
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
