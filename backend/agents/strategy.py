@@ -1,5 +1,6 @@
 """Strategy agent synthesizes findings into a human-review proposal only."""
 import json
+import os
 from agents.contracts import StrategyProposal
 from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 
@@ -9,7 +10,7 @@ class StrategyAgent:
 
     async def propose(self, market: dict, technical: dict, risk: dict) -> StrategyProposal:
         response = await meta_ai.chat(
-            model=DEFAULT_META_MODEL,
+            model=os.getenv("TRADING_MODEL", DEFAULT_META_MODEL),
             system_prompt=(
                 "You are the Strategy agent. Synthesize the three supplied reports into a conservative "
                 "research proposal. Return JSON with action BUY, SELL or HOLD, rationale, confidence 0..1, "
