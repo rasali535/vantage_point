@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 import os
 from typing import Any, Dict, Literal
 import hmac
-import os
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -223,6 +222,23 @@ def _require_paper_access(token: str | None) -> None:
         raise HTTPException(status_code=503, detail="Configure PAPER_INITIAL_BALANCE_USD before initializing the paper account.")
 
 
+async def _record_paper_audit(db, fill: dict) -> None:
+    try:
+        await db.audit_logs.insert_one({
+            "_id": f"paper:{fill['idempotency_key']}",
+            "timestamp": fill["timestamp"],
+            "agent": "paper_execution",
+            "action": f"Simulated {fill['side']} {fill['pair']}",
+            "status": "paper_fill_recorded",
+            "execution_enabled": False,
+            "exchange_order_submitted": False,
+            "idempotency_key": fill["idempotency_key"],
+        })
+    except DuplicateKeyError:
+        # A retry after a committed account update must not duplicate the audit event.
+        return
+
+
 async def _get_or_create_paper_account(db):
     account = await db.paper_accounts.find_one({"_id": "default"})
     if account:
@@ -243,9 +259,12 @@ async def get_paper_account(x_paper_token: str | None = Header(default=None)):
     db = await get_database()
     account = await _get_or_create_paper_account(db)
     prices = {}
-    for position in account.get("positions", {}).keys():
-        ticker = await get_kraken_agent().get_ticker(position)
-        prices[position] = ticker["last"]
+    try:
+        for position in account.get("positions", {}).keys():
+            ticker = await get_kraken_agent().get_ticker(position)
+            prices[position] = ticker["last"]
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Paper account valuation is temporarily unavailable.") from exc
     return account_summary(account, prices)
 
 
@@ -272,6 +291,7 @@ async def submit_paper_order(
                 None,
             )
             if previous:
+                await _record_paper_audit(db, previous)
                 return {
                     "fill": {**previous, "duplicate": True},
                     "account": account_summary(account),
@@ -305,15 +325,7 @@ async def submit_paper_order(
                 return_document=ReturnDocument.AFTER,
             )
             if saved:
-                await db.audit_logs.insert_one({
-                    "timestamp": utc_now(),
-                    "agent": "paper_execution",
-                    "action": f"Simulated {payload.side} {payload.pair}",
-                    "status": "paper_fill_recorded",
-                    "execution_enabled": False,
-                    "exchange_order_submitted": False,
-                    "idempotency_key": payload.idempotency_key,
-                })
+                await _record_paper_audit(db, fill)
                 return {
                     "fill": fill,
                     "account": account_summary(saved, {**portfolio_prices, payload.pair: reference_price}),
