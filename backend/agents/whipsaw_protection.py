@@ -135,7 +135,7 @@ class WhipsawProtectionEngine:
                 if str(t.get("side", "")).lower() in ["buy", "sell", "expense"]
             ]
             if recent_trades:
-                last_trade = recent_trades[0]
+                last_trade = recent_trades[-1]
                 last_side = str(last_trade.get("side", "")).lower()
                 
                 # Check if it was an opposite trade
