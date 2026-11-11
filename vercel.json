@@ -1,21 +1,26 @@
 {
-  "version": 2,
-  "name": "actionpilot",
-  "outputDirectory": "frontend/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": "frontend/"
+    },
+    "backend": {
+      "root": "backend/",
+      "entrypoint": "main:app"
+    }
+  },
   "rewrites": [
     {
+      "source": "/api",
+      "destination": { "service": "backend" }
+    },
+    {
       "source": "/api/(.*)",
-      "destination": "http://216.128.155.55:8000/api/$1"
+      "destination": { "service": "backend" }
     },
     {
       "source": "/(.*)",
-      "destination": "/frontend/dist/$1"
+      "destination": { "service": "frontend" }
     }
-  ],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
-  }
+  ]
 }
