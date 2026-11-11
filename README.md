@@ -56,7 +56,7 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_FEE_RATE` | Simulated fee fraction; defaults to `0.0026` (0.26%) |
 | `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `5` |
 | `PAPER_AUTOTRADING_ALLOWED` | Server-side permission for autonomous paper trading; defaults to `true`, but the operator must still start it |
-| `PAPER_AUTOTRADE_PAIRS` | Comma-separated USD-quoted Kraken spot pairs; defaults to `TRADING_PAIR` or `BTC/USD` |
+| `PAPER_AUTOTRADE_PAIRS` | Comma-separated USD-quoted Kraken spot pairs; defaults to a diversified BTC, ETH, SOL, XRP, ADA, DOGE, LTC, LINK, DOT and BCH basket |
 | `PAPER_AUTOTRADING_SCAN_SECONDS` | AI analysis interval; defaults to `300` seconds |
 | `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `20` seconds |
 | `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum AI strategy confidence; defaults to `0.70` |
