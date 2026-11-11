@@ -9,7 +9,7 @@ from pymongo.errors import PyMongoError
 import routes.meetings
 import routes.trading
 import routes.chat
-from database import close_database, get_database
+from database import close_database, ping_database
 
 
 @asynccontextmanager
@@ -61,10 +61,10 @@ async def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
-    # Readiness is explicit: a process without MongoDB is not ready to serve
-    # stateful trading features.
-    await get_database()
+    # Ping on each health request so Atlas restarts are visible immediately.
+    await ping_database()
     return {"status": "ready", "database": "connected"}
 
 
