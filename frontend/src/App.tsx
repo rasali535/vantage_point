@@ -46,10 +46,10 @@ const Boardroom = () => {
       
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '2rem' }}>
         {[
-          { name: 'CEO (Gemini)', status: 'Orchestrating', color: 'var(--primary)' },
-          { name: 'Risk (DeepSeek)', status: 'Computing Greeks', color: 'var(--danger)' },
-          { name: 'Macro (Qwen)', status: 'Analyzing Trends', color: 'var(--success)' },
-          { name: 'Audit (Llama)', status: 'Verifying Compliance', color: 'var(--vantage-gold)' }
+          { name: 'Strategy Synthesis', status: 'LLM-assisted analysis', color: 'var(--primary)' },
+          { name: 'Signal Risk Filter', status: 'Deterministic whipsaw checks', color: 'var(--danger)' },
+          { name: 'Market Research', status: 'Kraken public market data', color: 'var(--success)' },
+          { name: 'Audit Ledger', status: 'MongoDB event persistence', color: 'var(--vantage-gold)' }
         ].map((agent, i) => (
           <div key={i} className="glass card" style={{ padding: '1rem', borderLeft: `4px solid ${agent.color}` }}>
             <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{agent.name}</div>
