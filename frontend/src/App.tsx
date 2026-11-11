@@ -30,8 +30,9 @@ const Boardroom = () => {
   const fetchBoardroom = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/boardroom`);
+      if (!res.ok) throw new Error("Boardroom history is unavailable.");
       const data = await res.json();
-      setDeliberations(data);
+      setDeliberations(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -62,7 +63,7 @@ const Boardroom = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         {deliberations.length === 0 && !loading && (
           <div className="glass card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No active deliberations in the boardroom. Scanning markets...
+            No six-agent analysis cycles have been recorded yet. Run a market scan to start the boardroom.
           </div>
         )}
         {deliberations.map((d: any, idx) => {
