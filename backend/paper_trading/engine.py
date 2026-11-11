@@ -115,6 +115,7 @@ def simulate_order(
     position = positions.get(pair)
     now_cash = dec(updated["cash"], "cash")
 
+    realized = None
     if side == "BUY":
         if now_cash < total:
             raise PaperTradeError("Insufficient paper USD balance for this order and fee.")
@@ -194,6 +195,7 @@ def simulate_order(
         "fee_usd": str(fee),
         "fee_rate": str(fee_rate),
         "slippage_bps": str(slippage_bps),
+        "realized_pnl_usd": str(_quantize(realized, MONEY_STEP)) if realized is not None else None,
         "status": "filled",
         "execution_mode": "paper",
         "exchange_order_submitted": False,
