@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from paper_trading.engine import (
     PaperTradeError, account_summary, initial_account, simulate_order,
+    evaluate_protective_triggers,
 )
 from risk.engine import DeterministicRiskEngine, RiskPolicy
 
@@ -97,6 +98,42 @@ class PaperTradingTests(unittest.TestCase):
         self.assertFalse(summary["execution_enabled"])
         self.assertFalse(summary["exchange_order_submitted"])
 
+
+
+    def test_stop_loss_trigger_simulates_exit_and_never_submits_exchange_order(self):
+        account, _ = self.buy()
+        updated, exits = evaluate_protective_triggers(account, {"BTC/USD": "48000"})
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["triggered_by"], "stop_loss")
+        self.assertFalse(exits[0]["exchange_order_submitted"])
+        self.assertNotIn("BTC/USD", updated["positions"])
+
+    def test_take_profit_trigger_simulates_exit(self):
+        account, _ = simulate_order(
+            self.account, pair="BTC/USD", side="BUY", quantity="0.01",
+            reference_price="50000", idempotency_key="buy-target",
+            stop_loss_price="49000", take_profit_price="52000",
+            risk_engine=DeterministicRiskEngine(policy()),
+        )
+        updated, exits = evaluate_protective_triggers(account, {"BTC/USD": "52500"})
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["triggered_by"], "take_profit")
+        self.assertNotIn("BTC/USD", updated["positions"])
+
+    def test_protective_monitor_does_nothing_when_thresholds_not_crossed(self):
+        account, _ = self.buy()
+        updated, exits = evaluate_protective_triggers(account, {"BTC/USD": "50500"})
+        self.assertEqual(exits, [])
+        self.assertEqual(updated["positions"], account["positions"])
+
+    def test_invalid_take_profit_is_rejected(self):
+        with self.assertRaisesRegex(PaperTradeError, "take-profit must be above"):
+            simulate_order(
+                self.account, pair="BTC/USD", side="BUY", quantity="0.01",
+                reference_price="50000", idempotency_key="bad-target",
+                stop_loss_price="49000", take_profit_price="49000",
+                risk_engine=DeterministicRiskEngine(policy()),
+            )
 
 if __name__ == "__main__":
     unittest.main()
