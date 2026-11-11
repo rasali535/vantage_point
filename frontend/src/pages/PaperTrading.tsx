@@ -185,7 +185,7 @@ const PaperTrading: React.FC = () => {
         <label htmlFor="paper-token" style={{ display: 'block', marginBottom: 8, color: 'var(--text-muted)' }}>Paper access token</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" style={{ flex: 1, minWidth: 220, padding: 12, borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-          <button className="btn btn-primary" onClick={refresh} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
+          <button className="btn btn-primary" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>The token stays in this page's memory and is not saved to browser storage.</p>
       </div>
