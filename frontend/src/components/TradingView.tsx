@@ -56,42 +56,6 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
     setScanning(false);
   };
 
-  const handleManualTrade = async (action: 'BUY' | 'SELL') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/trading/manual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, volume: 0.01 })
-      });
-      const data = await response.json();
-      if (data.status === 'success') {
-        alert(`Manual ${action} successful! Order: ${data.trade.order_id}`);
-        fetchStatus();
-      } else {
-        alert(`Manual ${action} failed.`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Error placing manual trade.');
-    }
-  };
-
-  const handleInvoiceUpload = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/trading/invoice`, {
-        method: 'POST'
-      });
-      const data = await response.json();
-      if (data.status === 'success') {
-        alert(`Invoice Audited! Vendor: ${data.extraction.vendor_name}, Total: ${data.extraction.total_amount}`);
-        fetchStatus();
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Error processing invoice.');
-    }
-  };
-
   if (!status) return <div className="glass card">Loading Kraken Terminal...</div>;
 
   return (
@@ -99,15 +63,15 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
       {/* Header Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
         <div className="glass card">
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Portfolio Balance (xStocks)</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Exchange Balance (paper account)</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <DollarSign size={20} color="var(--success)" /> {status.balance.USD?.toLocaleString()}
+            <DollarSign size={20} color="var(--success)" /> {status.balance?.USD != null ? status.balance.USD.toLocaleString() : 'Unavailable'}
           </div>
         </div>
         <div className="glass card">
           <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>24h Profit/Loss</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={20} /> {status.pnl_24h}
+            <TrendingUp size={20} /> {status.pnl_24h ?? 'Not calculated'}
           </div>
         </div>
         <div className="glass card">
@@ -126,7 +90,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
           <div className="glass card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShoppingCart size={20} color="var(--warning)" /> Execution Log (Kraken CLI)
+                <ShoppingCart size={20} color="var(--warning)" /> Trade Ledger (read-only)
               </h3>
               <button 
                 className={`btn btn-primary ${scanning ? 'loading' : ''}`} 
@@ -184,44 +148,17 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
             ))}
             {(!status.balance?.holdings || Object.keys(status.balance.holdings).length === 0) && (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center', padding: '1rem' }}>
-                No active holdings. Treasury is 100% liquid in USD.
+                Exchange holdings are unavailable until Kraken connectivity is verified.
               </div>
             )}
           </div>
           <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 193, 7, 0.1)', borderRadius: '8px', border: '1px solid var(--warning)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>AI Strategy Note</div>
             <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              Currently optimizing <strong>AAPLx</strong> position for yield-capture. Seeking momentum signals in <strong>NVDAx</strong> for treasury rebalancing.
+              Analysis-only mode. No orders can be submitted from this build.
             </div>
           </div>
 
-          {/* Manual Execution Controls */}
-          <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '1rem' }}>Manual Controls</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <button 
-                  onClick={() => handleManualTrade('BUY')}
-                  style={{ flex: 1, padding: '0.75rem', background: 'var(--success)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  Manual BUY (0.01 AAPLx)
-                </button>
-                <button 
-                  onClick={() => handleManualTrade('SELL')}
-                  style={{ flex: 1, padding: '0.75rem', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  Manual SELL (0.01 AAPLx)
-                </button>
-              </div>
-              
-              <button 
-                onClick={handleInvoiceUpload}
-                style={{ width: '100%', padding: '0.75rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-              >
-                <DollarSign size={16} /> Process & Audit Invoice (Multimodal)
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
