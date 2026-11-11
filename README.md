@@ -39,6 +39,12 @@ Set secrets in Vercel project environment settings, not in source files.
 | `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |
 | `TRADING_MODEL` | Strategy synthesis model; defaults to Meta Llama 3.3 70B |
 | `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
+| `RISK_MAX_TRADE_RISK_PCT` | Operator-defined maximum stop-loss risk per proposed trade |
+| `RISK_MAX_DAILY_LOSS_PCT` | Operator-defined daily loss ceiling |
+| `RISK_MAX_DRAWDOWN_PCT` | Operator-defined maximum drawdown |
+| `RISK_MAX_OPEN_POSITIONS` | Operator-defined maximum concurrent positions |
+| `RISK_MAX_LEVERAGE` | Operator-defined maximum leverage |
+| `RISK_REQUIRE_STOP_LOSS` | Explicit `true` or `false`; recommended `true`
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
@@ -59,7 +65,7 @@ AI model and transcription provider failures are returned as service errors; no 
 Before execution can be enabled, the following must be implemented and tested:
 
 - Authentication and authorization for every state-changing route.
-- A deterministic risk engine independent of the LLM, with strict exposure and loss limits.
+- Operator-configured limits for the deterministic risk engine. Missing limits cause every proposal to be rejected; no unconfirmed defaults are applied.
 - A kill switch and explicit operator approval for any transition to live execution.
 - Idempotent order submission and exchange-confirmed order/fill reconciliation.
 - Durable audit records for every proposal, approval, rejection, order attempt, and fill.
