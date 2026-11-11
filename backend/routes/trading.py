@@ -61,6 +61,14 @@ async def get_trading_status():
         "pnl_24h": None,
         "active_strategy": f"Market Analysis ({trading_model} + {research_model})",
         "data_source": "kraken_spot_rest",
+        "agents": [
+            {"id": "market_intelligence", "status": "ready", "provider": "meta"},
+            {"id": "technical_analyst", "status": "ready", "provider": "deterministic"},
+            {"id": "strategy", "status": "ready", "provider": "meta"},
+            {"id": "risk_manager", "status": "advisory_only", "provider": "meta"},
+            {"id": "execution", "status": "disabled", "provider": "deterministic_risk_gate"},
+            {"id": "performance", "status": "read_only", "provider": "mongodb_ledger"},
+        ],
     }
 
 
