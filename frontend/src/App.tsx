@@ -131,6 +131,9 @@ const Dashboard = ({ onSelectEvent, onSelectBoardroom, onNewMeeting, status, onR
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 800 }}>LOCKED</div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Analysis only. No orders can be submitted.</div>
+          <div style={{ color: 'var(--warning)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+            Risk policy: {status?.risk_policy_status === 'configured' ? 'configured' : 'not configured'}
+          </div>
         </div>
 
         <div className="glass card">
