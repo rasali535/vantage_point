@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from database import get_database
-from agents.featherless import featherless
+from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 from agents.transcription import SpeechmaticsAgent
 
 router = APIRouter()
@@ -56,10 +56,10 @@ Return only JSON with this shape:
   "action_items": [{"task": "string", "owner": "string or null", "due_date": "string or null"}]
 }
 """
-    model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+    model = os.getenv("RESEARCH_MODEL", DEFAULT_META_MODEL)
 
     try:
-        response = await featherless.chat(
+        response = await meta_ai.chat(
             model=model,
             system_prompt=system_prompt,
             user_prompt=f"Meeting title: {title}\nTranscript:\n{transcript}",
