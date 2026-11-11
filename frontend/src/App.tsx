@@ -4,7 +4,6 @@ import {
   FileText, 
   History, 
   Plus, 
-  MoreVertical,
   Activity,
   AlertCircle,
   TrendingUp,
