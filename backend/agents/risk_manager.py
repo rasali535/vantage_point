@@ -1,5 +1,6 @@
 """Risk analyst advisory. Deterministic risk controls remain authoritative."""
 import json
+import os
 from agents.contracts import AgentFinding
 from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 
@@ -9,7 +10,7 @@ class RiskManagerAgent:
 
     async def assess(self, pair: str, ticker: dict, technical: dict, portfolio: dict) -> AgentFinding:
         response = await meta_ai.chat(
-            model=DEFAULT_META_MODEL,
+            model=os.getenv("RISK_MODEL", DEFAULT_META_MODEL),
             system_prompt=(
                 "You are the Risk Manager advisory agent. Identify uncertainty, liquidity, volatility "
                 "and downside scenarios from supplied facts only. You cannot approve orders or override "
