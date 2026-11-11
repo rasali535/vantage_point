@@ -2,12 +2,12 @@ import os
 import json
 import asyncio
 from typing import Dict, List
-from agents.featherless import featherless
+from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_LLAMA_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
+DEFAULT_LLAMA_MODEL = DEFAULT_META_MODEL
 
 
 class BoardroomCouncil:
@@ -17,7 +17,7 @@ class BoardroomCouncil:
         self.trading_model = os.getenv("TRADING_MODEL", DEFAULT_LLAMA_MODEL)
 
     async def get_risk_opinion(self, market_data: str) -> str:
-        return await featherless.chat(
+        return await meta_ai.chat(
             model=self.risk_model,
             system_prompt=(
                 "You are the independent risk analyst for Ras Ali AI Trader. "
@@ -28,7 +28,7 @@ class BoardroomCouncil:
         )
 
     async def get_market_opinion(self, ticker: Dict) -> str:
-        return await featherless.chat(
+        return await meta_ai.chat(
             model=self.research_model,
             system_prompt=(
                 "You are the market intelligence analyst for Ras Ali AI Trader. "
@@ -78,7 +78,7 @@ Return ONLY valid JSON:
   "confidence": 0-1.0
 }}
 """
-        response_text = await featherless.chat(
+        response_text = await meta_ai.chat(
             model=self.trading_model,
             system_prompt=(
                 "You are the strategy synthesis analyst for Ras Ali AI Trader. "
