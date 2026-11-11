@@ -33,7 +33,12 @@ class TechnicalAnalystAgent:
             closes = [float(c["close"]) for c in candles]
             highs = [float(c["high"]) for c in candles]
             lows = [float(c["low"]) for c in candles]
-            if len(closes) < 30 or any(not math.isfinite(x) or x <= 0 for x in closes):
+            if (
+                len(closes) < 30
+                or any(not math.isfinite(x) or x <= 0 for x in closes)
+                or any(not math.isfinite(x) or x <= 0 for x in highs + lows)
+                or any(high < low for high, low in zip(highs, lows))
+            ):
                 return TechnicalReport(trend="insufficient_data", warnings=["At least 30 valid candles are required; recommendation defaults to HOLD."])
             fast, slow = _ema(closes, 9), _ema(closes, 21)
             rsi = _rsi(closes)
