@@ -68,7 +68,7 @@ def initial_account(initial_cash: Any) -> dict:
 def account_equity(account: dict, prices: dict[str, Any]) -> Decimal:
     equity = dec(account["cash"], "cash")
     for pair, position in account.get("positions", {}).items():
-        price = dec(prices.get(pair), f"{pair} market price")
+        price = dec(prices.get(pair, position.get("average_entry")), f"{pair} market price")
         equity += dec(position["quantity"], "position quantity") * price
     return equity
 
@@ -190,9 +190,9 @@ def simulate_order(
         "status": "filled",
         "execution_mode": "paper",
         "exchange_order_submitted": False,
-        "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    updated["orders"] = (updated.get("orders", []) + [fill])[-500:]
+    updated["orders"] = updated.get("orders", []) + [fill]
     updated["version"] = int(updated.get("version", 0)) + 1
     return updated, {**fill, "duplicate": False}
 
