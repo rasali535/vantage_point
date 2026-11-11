@@ -101,7 +101,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
                 onClick={runScanner}
                 disabled={scanning}
               >
-                <RefreshCcw size={16} /> {scanning ? 'Scanning Market...' : 'Run Autonomous Scan'}
+                <RefreshCcw size={16} /> {scanning ? 'Scanning Market...' : 'Run Market Analysis'}
               </button>
             </div>
             
