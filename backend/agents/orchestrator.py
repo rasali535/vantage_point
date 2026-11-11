@@ -29,7 +29,7 @@ class TradingOrchestrator:
         market, risk = await asyncio.gather(market_task, risk_task)
         proposal = await self.strategy.propose(market.model_dump(mode="json"), technical.model_dump(mode="json"), risk.model_dump(mode="json"))
         entry = Decimal(str(ticker.get("last", "0")))
-        assessment = self.execution.assess(pair, proposal, entry, None, portfolio)
+        assessment = self.execution.assess(pair, proposal, entry, portfolio)
         performance = self.performance.summarize(closed_trades)
         return TradingCycleResult(
             pair=pair,
