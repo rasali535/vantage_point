@@ -45,7 +45,8 @@ def _enabled_by_operator() -> bool:
 
 
 def configured_pairs() -> list[str]:
-    raw = os.getenv("PAPER_AUTOTRADE_PAIRS", os.getenv("TRADING_PAIR", "BTC/USD"))
+    default_pairs = "BTC/USD,ETH/USD,SOL/USD,XRP/USD,ADA/USD,DOGE/USD,LTC/USD,LINK/USD,DOT/USD,BCH/USD"
+    raw = os.getenv("PAPER_AUTOTRADE_PAIRS", default_pairs)
     pairs = list(dict.fromkeys(item.strip().upper() for item in raw.split(",") if item.strip()))
     if (
         not pairs or len(pairs) > 20
