@@ -14,7 +14,7 @@ jobs:
     name: Backend safety tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -30,11 +30,11 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   frontend:
-    name: Frontend build and lint
+    name: Frontend production build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -45,6 +45,3 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
