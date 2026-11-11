@@ -32,19 +32,26 @@ class RiskPolicy:
             return None
 
         try:
+            stop_loss_setting = os.environ["RISK_REQUIRE_STOP_LOSS"].lower()
+            if stop_loss_setting not in {"true", "false"}:
+                return None
             policy = cls(
                 max_trade_risk_pct=Decimal(os.environ["RISK_MAX_TRADE_RISK_PCT"]),
                 max_daily_loss_pct=Decimal(os.environ["RISK_MAX_DAILY_LOSS_PCT"]),
                 max_drawdown_pct=Decimal(os.environ["RISK_MAX_DRAWDOWN_PCT"]),
                 max_open_positions=int(os.environ["RISK_MAX_OPEN_POSITIONS"]),
                 max_leverage=Decimal(os.environ["RISK_MAX_LEVERAGE"]),
-                require_stop_loss=os.environ["RISK_REQUIRE_STOP_LOSS"].lower() == "true",
+                require_stop_loss=stop_loss_setting == "true",
             )
         except (InvalidOperation, ValueError, KeyError):
             return None
 
         if (
-            policy.max_trade_risk_pct <= 0
+            not policy.max_trade_risk_pct.is_finite()
+            or not policy.max_daily_loss_pct.is_finite()
+            or not policy.max_drawdown_pct.is_finite()
+            or not policy.max_leverage.is_finite()
+            or policy.max_trade_risk_pct <= 0
             or policy.max_daily_loss_pct <= 0
             or policy.max_drawdown_pct <= 0
             or policy.max_open_positions < 1
@@ -84,6 +91,12 @@ class DeterministicRiskEngine:
         reasons: List[str] = []
         side = proposal.side.upper()
 
+        numeric_values = [
+            proposal.quantity, proposal.entry_price, proposal.equity,
+            proposal.daily_loss_pct, proposal.drawdown_pct, proposal.leverage,
+        ]
+        if any(not value.is_finite() for value in numeric_values):
+            reasons.append("All numeric proposal values must be finite.")
         if side not in {"BUY", "SELL"}:
             reasons.append("Order side must be BUY or SELL.")
         if not proposal.pair.strip():
@@ -101,7 +114,9 @@ class DeterministicRiskEngine:
         if policy.require_stop_loss and stop_loss is None:
             reasons.append("A stop-loss price is required by policy.")
         elif stop_loss is not None:
-            if stop_loss <= 0:
+            if not stop_loss.is_finite():
+                reasons.append("Stop-loss price must be finite.")
+            elif stop_loss <= 0:
                 reasons.append("Stop-loss price must be positive.")
             elif side == "BUY" and stop_loss >= proposal.entry_price:
                 reasons.append("A BUY stop-loss must be below the proposed entry price.")
