@@ -28,7 +28,9 @@ services:
     container_name: actionpilot-api
     ports:
       - "8000:8000"
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     depends_on:
       mongodb:
         condition: service_healthy

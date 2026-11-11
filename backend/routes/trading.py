@@ -11,6 +11,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from agents.kraken import KrakenAgent
+from agents.meta_ai import meta_ai, MetaAIError
 from agents.orchestrator import trading_orchestrator
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
@@ -62,6 +63,8 @@ async def get_trading_status():
     research_model = os.getenv("RESEARCH_MODEL", "muse-spark-1.3").split("/")[-1]
     trading_model = os.getenv("TRADING_MODEL", "muse-spark-1.3").split("/")[-1]
     risk_policy_configured = RiskPolicy.from_env() is not None
+    meta_status = "ready" if meta_ai.api_key else "not_configured"
+    meta_risk_status = "advisory_only" if meta_ai.api_key else "not_configured"
     return {
         "mode": "analysis_only",
         "execution_enabled": False,
@@ -76,10 +79,10 @@ async def get_trading_status():
         "active_strategy": f"Market Analysis ({trading_model} + {research_model})",
         "data_source": "kraken_spot_rest",
         "agents": [
-            {"id": "market_intelligence", "status": "ready", "provider": "meta"},
+            {"id": "market_intelligence", "status": meta_status, "provider": "meta"},
             {"id": "technical_analyst", "status": "ready", "provider": "deterministic"},
-            {"id": "strategy", "status": "ready", "provider": "meta"},
-            {"id": "risk_manager", "status": "advisory_only", "provider": "meta"},
+            {"id": "strategy", "status": meta_status, "provider": "meta"},
+            {"id": "risk_manager", "status": meta_risk_status, "provider": "meta"},
             {"id": "execution", "status": "disabled", "provider": "deterministic_risk_gate"},
             {"id": "performance", "status": "read_only", "provider": "mongodb_ledger"},
         ],
@@ -196,6 +199,20 @@ async def scan_and_analyze_route():
         return result
     except HTTPException:
         raise
+    except MetaAIError as exc:
+        elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+        logger.warning(
+            "trading_scan_meta_provider_failed request_id=%s elapsed_ms=%d code=%s error=%s",
+            request_id, elapsed_ms, exc.error_code, exc.message,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": f"Market analysis unavailable: {exc.message} No order was submitted.",
+                "error_code": exc.error_code or "meta_provider_error",
+                "request_id": request_id,
+            },
+        ) from exc
     except Exception as exc:
         # Keep provider details server-side; never fall back to fabricated data.
         elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
