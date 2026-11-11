@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from agents.featherless import featherless
+from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
 import os
 
 router = APIRouter()
@@ -35,9 +35,9 @@ async def chat_with_agent(request: ChatRequest):
     financial advice.
     """
 
-    chat_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+    chat_model = os.getenv("RESEARCH_MODEL", DEFAULT_META_MODEL)
     try:
-        reply = await featherless.chat(
+        reply = await meta_ai.chat(
             model=chat_model,
             system_prompt=system_prompt,
             user_prompt=user_query,
