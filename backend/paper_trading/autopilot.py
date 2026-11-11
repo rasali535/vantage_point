@@ -438,7 +438,8 @@ async def set_autopilot_enabled(db, enabled: bool) -> dict:
         "mode": "paper",
         "exchange_order_submitted": False,
     }
-    await db.paper_runtime.update_one({"_id": "autopilot"}, {"$set": record}, upsert=True)
+    fields = {key: value for key, value in record.items() if key != "_id"}
+    await db.paper_runtime.update_one({"_id": "autopilot"}, {"$set": fields}, upsert=True)
     return record
 
 
