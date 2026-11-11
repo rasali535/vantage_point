@@ -13,7 +13,7 @@ There is no Vultr dependency. Do not use the retired Vultr VM, its IP address, S
 
 ## Vercel routing
 
-The root `vercel.json` defines two Vercel services:
+The root `vercel.json` defines two Vercel services. The Vercel project framework must be set to **Services** for this configuration to build. Each service pins its own framework to avoid ambiguous detection:
 
 - `frontend/` serves the Vite application.
 - `backend/` exposes the FastAPI application from `main:app`.
@@ -26,7 +26,7 @@ Set secrets in the Vercel project environment settings, not in source files:
 
 | Variable | Purpose |
 | --- | --- |
-| `MONGODB_URL` | MongoDB Atlas connection URI |
+| `MONGODB_URL` | MongoDB Atlas connection URI |\n| `MONGODB_DB_NAME` | Optional database name (defaults to `action_pilot`) |\n| `CORS_ORIGINS` | Comma-separated allowed frontend origins; set production/preview domains explicitly |
 | `KRAKEN_API_KEY` | Server-side Kraken API key |
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only access is verified |
@@ -47,7 +47,7 @@ The current Kraken agent shells out to the `kraken` CLI. That CLI is installed b
 
 ## Trading safety requirements
 
-The platform must default to simulation/paper mode. Live execution remains disabled until the exchange adapter, authentication, deterministic risk checks, order lifecycle, persistence and audit trail have been tested.
+The platform currently runs in **analysis-only mode**. No live or paper orders can be submitted. Execution remains disabled until authentication, deterministic risk checks, idempotency, order lifecycle, persistence and audit trail have been implemented and tested.
 
 Required controls include:
 
