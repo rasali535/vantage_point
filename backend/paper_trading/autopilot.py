@@ -230,11 +230,19 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     confidence = D(str(cycle.strategy.confidence))
     technical_signal = cycle.technical_analysis.signal
     signal_report = whipsaw_protection.evaluate_signal_quality(candles, account.get("orders", []), action.value)
+    analysis = {
+        "strategy": cycle.strategy.model_dump(mode="json"),
+        "technical_analysis": cycle.technical_analysis.model_dump(mode="json"),
+        "risk_assessment": cycle.risk_assessment.model_dump(mode="json"),
+        "execution_assessment": cycle.execution_assessment.model_dump(mode="json"),
+        "performance": cycle.performance_context,
+        "signal_quality": signal_report,
+    }
     if signal_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"}:
         action = TradeAction.HOLD
 
     if confidence < confidence_floor or action == TradeAction.HOLD:
-        return {"pair": pair, "decision": "HOLD", "reason": "Confidence or signal-quality threshold not met."}
+        return {"pair": pair, "decision": "HOLD", "reason": "Confidence or signal-quality threshold not met.", "analysis": analysis}
 
     if action == TradeAction.BUY:
         if technical_signal != TradeAction.BUY or current:
@@ -285,7 +293,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             "stop_loss": str(stop),
             "take_profit": str(target),
         })
-        return {"pair": pair, "decision": "BUY", "fill": fill, "account_version": saved.get("version")}
+        return {"pair": pair, "decision": "BUY", "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
 
     if action == TradeAction.SELL and current:
         if technical_signal != TradeAction.SELL:
@@ -307,9 +315,9 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             "strategy_confidence": str(confidence),
             "strategy_rationale": cycle.strategy.rationale[:1000],
         })
-        return {"pair": pair, "decision": "SELL", "fill": fill, "account_version": saved.get("version")}
+        return {"pair": pair, "decision": "SELL", "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
 
-    return {"pair": pair, "decision": "HOLD", "reason": "No compatible open position for this signal."}
+    return {"pair": pair, "decision": "HOLD", "reason": "No compatible open position for this signal.", "analysis": analysis}
 
 
 async def run_autopilot_cycle(db=None) -> dict:
