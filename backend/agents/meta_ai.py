@@ -14,6 +14,10 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Emit this module's startup fingerprint even when the host has not configured
+# the root logger yet. This affects only this module's INFO-level records.
+logger.setLevel(logging.INFO)
+
 DEFAULT_META_MODEL = "muse-spark-1.3"
 
 
