@@ -33,7 +33,7 @@ Set secrets in Vercel project environment settings, not in source files.
 | `KRAKEN_API_KEY` | Server-side Kraken API key |
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only permissions are verified |
-| `TRADING_PAIR` | Kraken market pair to analyse; defaults to `XBT/USD` |
+| `TRADING_PAIR` | Kraken market pair to analyse; defaults to `BTC/USD` |
 | `FEATHERLESS_API_KEY` | Featherless AI provider key |
 | `RESEARCH_MODEL` | Market intelligence model; defaults to Meta Llama 3.3 70B |
 | `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |
