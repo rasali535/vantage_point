@@ -85,7 +85,7 @@ async def scan_and_analyze() -> Dict[str, Any]:
     # Database availability is a prerequisite for an auditable scan.
     db = await get_database()
     k_agent = get_kraken_agent()
-    trading_pair = os.getenv("TRADING_PAIR", "XBT/USD")
+    trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
 
     ticker, candles = await __import__("asyncio").gather(
         k_agent.get_ticker(trading_pair),
