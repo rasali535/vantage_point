@@ -29,10 +29,23 @@ class ExecutionAgent:
                 reasons=["Risk limits are missing or invalid; every proposal is rejected."],
             )
 
+        portfolio_check = self.risk_engine.evaluate_portfolio_state(
+            daily_loss_pct=portfolio.daily_loss_pct,
+            drawdown_pct=portfolio.drawdown_pct,
+            open_positions=portfolio.open_positions,
+            leverage=portfolio.leverage,
+        )
+        if not portfolio_check.get("approved"):
+            return ExecutionAssessment(
+                status=portfolio_check.get("status", "rejected"),
+                reasons=portfolio_check.get("reasons", []),
+            )
+
         if quantity is None or quantity <= 0:
             return ExecutionAssessment(
                 status="sizing_required",
-                reasons=["A validated order quantity is required before deterministic risk evaluation."],
+                reasons=["Portfolio is within configured limits; validated order quantity and stop-loss are required next."],
+                risk_metrics={"portfolio_status": portfolio_check.get("status")},
             )
 
         risk = self.risk_engine.evaluate(OrderProposal(
