@@ -344,7 +344,7 @@ const App: React.FC = () => {
       <ChatBot />
       <aside className="sidebar">
         <div style={{ padding: '2rem', fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-1px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', background: 'var(--primary)', borderRadius: '8px' }}></div> ActionPilot
+          <div style={{ width: '32px', height: '32px', background: 'var(--primary)', borderRadius: '8px' }}></div> Ras Ali Labs
         </div>
         <nav className="nav-links">
           <div 
@@ -379,7 +379,7 @@ const App: React.FC = () => {
           </div>
         </nav>
 
-        {/* Executive Voice Memo / Speechmatics Ingest Desk */}
+        {/* Market Research Audio Note */}
         <div className="glass" style={{
           margin: '2rem 1.25rem',
           padding: '1.25rem',
@@ -402,7 +402,7 @@ const App: React.FC = () => {
               animation: isRecording ? 'pulse 1s infinite' : 'none' 
             }}></div>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-              {isRecording ? "Recording Live..." : "Executive Voice Desk"}
+              {isRecording ? "Recording Live..." : "Audio Research Note"}
             </span>
           </div>
 
@@ -436,25 +436,7 @@ const App: React.FC = () => {
                     <Mic size={16} /> Record Memo
                   </button>
                   
-                  <button 
-                    onClick={simulateAudioUpload}
-                    style={{ 
-                      width: '100%', 
-                      padding: '0.5rem', 
-                      background: 'rgba(255, 255, 255, 0.03)', 
-                      border: '1px solid var(--glass-border)', 
-                      borderRadius: '8px',
-                      color: 'var(--text-muted)',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                  >
-                    Simulate Speechmatics
-                  </button>
+
                 </>
               )}
             </div>
