@@ -47,7 +47,7 @@ async def get_trading_status():
     research_model = os.getenv("RESEARCH_MODEL", "not_configured").split("/")[-1]
     trading_model = os.getenv("TRADING_MODEL", "not_configured").split("/")[-1]
     return {
-        "mode": "paper",
+        "mode": "analysis_only",
         "execution_enabled": False,
         "exchange_status": exchange_status,
         "balance": balance,
