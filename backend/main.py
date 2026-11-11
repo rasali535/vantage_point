@@ -13,6 +13,7 @@ import routes.meetings
 import routes.trading
 import routes.chat
 from database import close_database, ping_database
+from paper_trading.autopilot import start_worker, stop_worker
 
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-    await close_database()
+    start_worker()
+    try:
+        yield
+    finally:
+        await stop_worker()
+        await close_database()
 
 
 app = FastAPI(title="Ras Ali AI Trader API", version="0.2.0", lifespan=lifespan)
