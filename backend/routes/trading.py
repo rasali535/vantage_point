@@ -36,25 +36,27 @@ async def get_trading_status():
     history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(length=20)
 
     balance = None
-    exchange_status = "unavailable"
-    try:
-        balance = await get_kraken_agent().get_balance()
-        exchange_status = "connected"
-    except Exception:
-        # No synthetic balance or holdings are returned when the exchange fails.
-        pass
+    account_status = "disabled"
+    agent = get_kraken_agent()
+    if agent.account_reads_enabled:
+        try:
+            balance = await agent.get_balance()
+            account_status = "connected"
+        except Exception:
+            account_status = "unavailable"
 
-    research_model = os.getenv("RESEARCH_MODEL", "not_configured").split("/")[-1]
-    trading_model = os.getenv("TRADING_MODEL", "not_configured").split("/")[-1]
+    research_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
+    trading_model = os.getenv("TRADING_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
     return {
         "mode": "analysis_only",
         "execution_enabled": False,
-        "exchange_status": exchange_status,
+        "exchange_status": "public_market_data_only",
+        "account_status": account_status,
         "balance": balance,
         "history": [serialize_document(item) for item in history],
         "pnl_24h": None,
-        "active_strategy": f"Boardroom Council ({trading_model} + {research_model})",
-        "data_source": "kraken" if exchange_status == "connected" else "unavailable",
+        "active_strategy": f"Market Analysis ({trading_model} + {research_model})",
+        "data_source": "kraken_spot_rest",
     }
 
 
