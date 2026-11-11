@@ -5,7 +5,8 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from agents.kraken import KrakenAgent
-from agents.reasoning import boardroom
+from agents.orchestrator import trading_orchestrator
+from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
 from risk.engine import RiskPolicy
@@ -90,56 +91,78 @@ async def scan_and_analyze() -> Dict[str, Any]:
     k_agent = get_kraken_agent()
     trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
 
-    ticker, candles = await __import__("asyncio").gather(
+    import asyncio
+    ticker, candles = await asyncio.gather(
         k_agent.get_ticker(trading_pair),
         k_agent.get_ohlc(trading_pair),
     )
 
     baseline = whipsaw_protection.evaluate_signal_quality(candles, [], "HOLD")
-    decision = await boardroom.deliberate(ticker, candles, trading_pair, baseline)
-    proposed_action = str(decision.get("action", "HOLD")).upper()
+    portfolio = PortfolioRiskSnapshot()
+    closed_trades = await db.trading_ledger.find({
+        "status": "closed", "exchange_confirmed": True
+    }).sort("timestamp", -1).limit(100).to_list(length=100)
 
-    final_report = whipsaw_protection.evaluate_signal_quality(candles, [], proposed_action)
-    if final_report.get("action_recommendation") == "FORCE_HOLD" and proposed_action != "HOLD":
-        decision["action"] = "HOLD"
-        decision["reasoning"] = (
-            f"[WHIPSAW PROTECTION] Proposed {proposed_action} changed to HOLD. "
+    cycle = await trading_orchestrator.run(
+        pair=trading_pair,
+        ticker=ticker,
+        candles=candles,
+        portfolio=portfolio,
+        closed_trades=closed_trades,
+    )
+
+    final_report = whipsaw_protection.evaluate_signal_quality(
+        candles, closed_trades, cycle.strategy.action.value
+    )
+    if final_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"} and cycle.strategy.action != TradeAction.HOLD:
+        cycle.strategy.action = TradeAction.HOLD
+        cycle.strategy.rationale = (
+            f"[DETERMINISTIC WHIPSAW FILTER] Changed proposal to HOLD. "
             f"{final_report.get('reason', 'Signal quality threshold not met.')}"
         )
+        cycle.execution_assessment.status = "hold"
+        cycle.execution_assessment.reasons.append("Deterministic whipsaw filter requires HOLD.")
 
     timestamp = utc_now()
+    cycle_payload = cycle.model_dump(mode="json")
     deliberation = {
-        **decision,
+        **cycle_payload,
         "timestamp": timestamp,
-        "pair": trading_pair,
-        "signal_quality": final_report.get("signal_quality_index"),
-        "whipsaw_risk": final_report.get("whipsaw_risk"),
-        "market_data_source": "kraken",
+        "market_data_source": "kraken_spot_rest",
         "execution_status": "disabled",
     }
     audit = {
         "timestamp": timestamp,
-        "agent": "Boardroom",
-        "action": f"Proposed {str(decision.get('action', 'HOLD')).upper()}",
-        "reasoning": str(decision.get("reasoning", "")),
+        "agent": "six_agent_orchestrator",
+        "agents": [
+            "market_intelligence", "technical_analyst", "strategy",
+            "risk_manager", "execution", "performance",
+        ],
+        "action": f"Proposed {cycle.strategy.action.value}",
+        "reasoning": cycle.strategy.rationale,
         "status": "analysis_recorded",
         "execution_enabled": False,
     }
 
-    # If either durable write fails, the scan fails. It must not report success
-    # with an incomplete audit trail.
+    # If either durable write fails, the scan fails. No incomplete cycle is
+    # reported as successful and no order submission is attempted.
     await db.boardroom_history.insert_one(dict(deliberation))
     await db.audit_logs.insert_one(dict(audit))
 
     return {
         "pair": trading_pair,
         "ticker": ticker,
-        "decision": decision,
+        "decision": {
+            "action": cycle.strategy.action.value,
+            "reasoning": cycle.strategy.rationale,
+            "confidence": cycle.strategy.confidence,
+            "risk_score": None,
+            "agents": cycle_payload,
+        },
         "trade": None,
         "execution_status": "disabled",
         "signal_quality_report": final_report,
     }
-
 
 @router.post("/scan")
 async def scan_and_analyze_route():
