@@ -3,6 +3,8 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 
 import routes.meetings
 import routes.trading
@@ -17,6 +19,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Ras Ali AI Trader API", version="0.2.0", lifespan=lifespan)
+
+
+@app.exception_handler(PyMongoError)
+async def mongodb_unavailable_handler(request, exc):
+    # A cached client can lose its Atlas connection after startup. Normalize
+    # subsequent driver failures to 503 instead of leaking internal errors.
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "MongoDB is temporarily unavailable. No trading action was executed."},
+    )
 
 # Explicit origins only. Add production and preview frontend origins through
 # CORS_ORIGINS (comma-separated) in the deployment environment.
