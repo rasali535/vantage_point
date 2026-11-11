@@ -8,6 +8,8 @@ import database
 from agents.kraken import KrakenAgent
 from agents.featherless import FeatherlessAgent
 from agents.transcription import SpeechmaticsAgent
+from decimal import Decimal
+from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
 from routes.trading import manual_trade
 
 
@@ -45,6 +47,55 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
             agent = SpeechmaticsAgent()
             with self.assertRaisesRegex(RuntimeError, "not configured"):
                 await agent.transcribe("/tmp/nonexistent-audio.wav")
+
+    def test_risk_engine_rejects_when_policy_is_missing(self):
+        proposal = OrderProposal(
+            pair="BTC/USD", side="BUY", quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"), equity=Decimal("10000"),
+            stop_loss_price=Decimal("49500"), daily_loss_pct=Decimal("0"),
+            drawdown_pct=Decimal("0"), open_positions=0,
+        )
+        decision = DeterministicRiskEngine(policy=None).evaluate(proposal)
+        self.assertFalse(decision["approved"])
+        self.assertEqual(decision["status"], "risk_policy_not_configured")
+
+    def test_risk_engine_approves_within_explicit_policy(self):
+        policy = RiskPolicy(
+            max_trade_risk_pct=Decimal("0.5"),
+            max_daily_loss_pct=Decimal("2"),
+            max_drawdown_pct=Decimal("5"),
+            max_open_positions=5,
+            max_leverage=Decimal("1"),
+            require_stop_loss=True,
+        )
+        proposal = OrderProposal(
+            pair="BTC/USD", side="BUY", quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"), equity=Decimal("10000"),
+            stop_loss_price=Decimal("49500"), daily_loss_pct=Decimal("0.2"),
+            drawdown_pct=Decimal("1"), open_positions=0,
+        )
+        decision = DeterministicRiskEngine(policy=policy).evaluate(proposal)
+        self.assertTrue(decision["approved"])
+        self.assertFalse(decision["execution_enabled"])
+
+    def test_risk_engine_rejects_daily_loss_limit_breach(self):
+        policy = RiskPolicy(
+            max_trade_risk_pct=Decimal("0.5"),
+            max_daily_loss_pct=Decimal("2"),
+            max_drawdown_pct=Decimal("5"),
+            max_open_positions=5,
+            max_leverage=Decimal("1"),
+            require_stop_loss=True,
+        )
+        proposal = OrderProposal(
+            pair="BTC/USD", side="BUY", quantity=Decimal("0.1"),
+            entry_price=Decimal("50000"), equity=Decimal("10000"),
+            stop_loss_price=Decimal("49500"), daily_loss_pct=Decimal("2"),
+            drawdown_pct=Decimal("1"), open_positions=0,
+        )
+        decision = DeterministicRiskEngine(policy=policy).evaluate(proposal)
+        self.assertFalse(decision["approved"])
+        self.assertIn("Daily loss limit has been reached.", decision["reasons"])
 
 
 if __name__ == "__main__":
