@@ -35,7 +35,7 @@ async def chat_with_agent(request: ChatRequest):
     financial advice.
     """
 
-    chat_model = os.getenv("RESEARCH_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+    chat_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
     try:
         reply = await featherless.chat(
             model=chat_model,
