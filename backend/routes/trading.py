@@ -16,6 +16,7 @@ from database import get_database
 from risk.engine import RiskPolicy, DeterministicRiskEngine
 from paper_trading.engine import (
     PaperTradeError, account_summary, initial_account, simulate_order,
+    evaluate_protective_triggers,
 )
 
 router = APIRouter()
@@ -210,6 +211,7 @@ class PaperOrderRequest(BaseModel):
     quantity: str = Field(min_length=1, max_length=40)
     idempotency_key: str = Field(min_length=1, max_length=128)
     stop_loss_price: str | None = Field(default=None, max_length=40)
+    take_profit_price: str | None = Field(default=None, max_length=40)
 
 
 def _require_paper_access(token: str | None) -> None:
@@ -313,6 +315,7 @@ async def submit_paper_order(
                 reference_price=reference_price,
                 idempotency_key=payload.idempotency_key,
                 stop_loss_price=payload.stop_loss_price,
+                take_profit_price=payload.take_profit_price,
                 risk_engine=DeterministicRiskEngine(),
                 portfolio_prices=portfolio_prices,
             )
@@ -339,3 +342,47 @@ async def submit_paper_order(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Paper trading is temporarily unavailable. No live order was submitted.") from exc
+
+
+@router.post("/paper/monitor")
+async def monitor_paper_positions(x_paper_token: str | None = Header(default=None)):
+    """Mark virtual positions and simulate stop-loss/take-profit exits."""
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        for _attempt in range(5):
+            account = await _get_or_create_paper_account(db)
+            prices = {}
+            for pair in account.get("positions", {}).keys():
+                ticker = await get_kraken_agent().get_ticker(pair)
+                prices[pair] = ticker["last"]
+            updated, triggered = evaluate_protective_triggers(account, prices)
+            if not triggered:
+                return {
+                    "execution_mode": "paper",
+                    "monitored_positions": len(account.get("positions", {})),
+                    "triggered_exits": [],
+                    "exchange_order_submitted": False,
+                }
+            fields = {key: value for key, value in updated.items() if key != "_id"}
+            saved = await db.paper_accounts.find_one_and_update(
+                {"_id": "default", "version": account.get("version", 0)},
+                {"$set": fields},
+                return_document=ReturnDocument.AFTER,
+            )
+            if saved:
+                for fill in triggered:
+                    await _record_paper_audit(db, fill)
+                return {
+                    "execution_mode": "paper",
+                    "triggered_exits": triggered,
+                    "account": account_summary(saved, prices),
+                    "exchange_order_submitted": False,
+                }
+        raise HTTPException(status_code=409, detail="Paper account changed concurrently; retry monitoring.")
+    except HTTPException:
+        raise
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Paper protective monitoring is temporarily unavailable.") from exc
