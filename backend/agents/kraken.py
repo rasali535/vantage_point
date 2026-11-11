@@ -48,6 +48,10 @@ class KrakenAgent:
             raise RuntimeError("Kraken returned an invalid market-data response.")
         return result
 
+    async def get_asset_pairs(self) -> Dict:
+        """Return Kraken's public spot-pair metadata for instrument discovery."""
+        return await self._public_request("AssetPairs", {})
+
     def _private_signature(self, path: str, nonce: str, form_data: str) -> str:
         if not self.api_secret:
             raise RuntimeError("Kraken API secret is not configured.")
