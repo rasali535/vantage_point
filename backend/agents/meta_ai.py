@@ -3,12 +3,15 @@
 Uses Meta's OpenAI-compatible Chat Completions endpoint. The API key is
 server-side only and is never exposed to the frontend.
 """
+import logging
 import os
 
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_META_MODEL = "muse-spark-1.3"
 
@@ -22,8 +25,9 @@ class MetaAIClient:
         if not self.api_key:
             raise RuntimeError("MODEL_API_KEY is not configured.")
 
+        selected_model = model or DEFAULT_META_MODEL
         payload = {
-            "model": model or DEFAULT_META_MODEL,
+            "model": selected_model,
             "messages": [
                 {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -44,7 +48,41 @@ class MetaAIClient:
                 response.raise_for_status()
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            # Meta's error envelope is useful for diagnosing route, model, and
+            # project-access failures. Log only its structured error fields;
+            # never log request headers, prompts, or credentials.
+            error_code = None
+            error_type = None
+            error_message = None
+            try:
+                body = exc.response.json()
+                error = body.get("error", {}) if isinstance(body, dict) else {}
+                if isinstance(error, dict):
+                    error_code = error.get("code")
+                    error_type = error.get("type")
+                    error_message = error.get("message")
+            except (ValueError, TypeError):
+                pass
+
+            logger.error(
+                "meta_model_api_http_error status=%s model=%s base_url=%s "
+                "error_code=%s error_type=%s error_message=%s",
+                exc.response.status_code,
+                selected_model,
+                self.base_url,
+                str(error_code)[:120] if error_code is not None else None,
+                str(error_type)[:120] if error_type is not None else None,
+                str(error_message)[:500] if error_message is not None else None,
+            )
+            raise RuntimeError("Meta Model API request failed or returned an invalid response.") from exc
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            logger.error(
+                "meta_model_api_response_error error_type=%s model=%s base_url=%s",
+                type(exc).__name__,
+                selected_model,
+                self.base_url,
+            )
             raise RuntimeError("Meta Model API request failed or returned an invalid response.") from exc
 
         if not isinstance(content, str) or not content.strip():
