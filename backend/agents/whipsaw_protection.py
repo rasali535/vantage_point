@@ -31,15 +31,17 @@ class WhipsawProtectionEngine:
         if len(ohlc) < self.er_period + 1:
             return 0.0, "INSUFFICIENT_DATA" # Missing history must never be treated as a strong trend
             
-        close_prices = [float(candle.get("close", 0)) for candle in ohlc]
-        
-        # Net direction move over period n
-        net_change = abs(close_prices[0] - close_prices[self.er_period])
-        
-        # Sum of absolute price changes over the period
+        # Candle providers return chronological data; use the newest window,
+        # not the oldest candles in a long history.
+        close_prices = [float(candle.get("close", 0)) for candle in ohlc[-(self.er_period + 1):]]
+
+        # Net direction move over the latest period.
+        net_change = abs(close_prices[-1] - close_prices[0])
+
+        # Sum of absolute price changes over the same latest window.
         sum_of_changes = 0.0
         for i in range(self.er_period):
-            sum_of_changes += abs(close_prices[i] - close_prices[i + 1])
+            sum_of_changes += abs(close_prices[i + 1] - close_prices[i])
             
         if sum_of_changes == 0.0:
             er = 0.0
@@ -72,10 +74,11 @@ class WhipsawProtectionEngine:
             return float(std)
 
         true_ranges = []
-        for i in range(self.atr_period):
-            curr = ohlc[i]
-            prev = ohlc[i + 1]
-            
+        latest = ohlc[-(self.atr_period + 1):]
+        for i in range(1, len(latest)):
+            curr = latest[i]
+            prev = latest[i - 1]
+
             high = float(curr.get("high", 0))
             low = float(curr.get("low", 0))
             prev_close = float(prev.get("close", 0))
