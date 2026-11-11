@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, Bot, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
@@ -68,12 +68,12 @@ const PaperTrading: React.FC = () => {
     return data;
   }, [token]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     if (!token.trim()) {
-      setError('Enter the paper-trading access token configured by the operator.');
+      if (!silent) setError('Enter the paper-trading access token configured by the operator.');
       return;
     }
-    setBusy(true);
+    if (!silent) setBusy(true);
     setError('');
     try {
       const [summary, history, autoStatus] = await Promise.all([
@@ -84,13 +84,19 @@ const PaperTrading: React.FC = () => {
       setAccount(summary);
       setOrders(Array.isArray(history) ? history : []);
       setAutopilot(autoStatus);
-      setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
+      if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
     } finally {
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
   }, [request, token]);
+
+  useEffect(() => {
+    if (!token.trim() || !autopilot?.enabled) return;
+    const timer = window.setInterval(() => { void refresh(true); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [autopilot?.enabled, token, refresh]);
 
 
   const toggleAutopilot = async () => {
