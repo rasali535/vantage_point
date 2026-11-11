@@ -370,26 +370,24 @@ async def _worker_loop() -> None:
         try:
             db = await get_database()
             state = await db.paper_runtime.find_one({"_id": "autopilot"})
-            if state and state.get("enabled") is True and _enabled_by_operator():
+            if os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true" and os.getenv("PAPER_INITIAL_BALANCE_USD"):
                 if await _acquire_worker_lease(db):
                     try:
-                        now = asyncio.get_running_loop().time()
-                        if now - last_scan >= scan_interval:
-                            await run_autopilot_cycle(db)
-                            last_scan = now
+                        if state and state.get("enabled") is True and _enabled_by_operator():
+                            now = asyncio.get_running_loop().time()
+                            if now - last_scan >= scan_interval:
+                                await run_autopilot_cycle(db)
+                                last_scan = now
+                            else:
+                                account = await db.paper_accounts.find_one({"_id": "default"})
+                                if account and account.get("positions"):
+                                    await _mark_and_protect_positions(db, account)
                         else:
-                            # Protective stop/target monitoring runs more
-                            # frequently than the expensive AI analysis cycle.
-                            account = await _get_account(db)
-                            account, prices, triggered = await _mark_and_protect_positions(db, account)
-                            if triggered:
-                                await db.paper_autopilot_runs.insert_one({
-                                    "timestamp": _utcnow().isoformat(),
-                                    "status": "protective_exit",
-                                    "protective_exits": triggered,
-                                    "execution_mode": "paper",
-                                    "exchange_order_submitted": False,
-                                })
+                            # Stopping new entries does not abandon protective
+                            # exits for positions already open in the virtual account.
+                            account = await db.paper_accounts.find_one({"_id": "default"})
+                            if account and account.get("positions"):
+                                await _mark_and_protect_positions(db, account)
                     finally:
                         await _release_worker_lease(db)
         except asyncio.CancelledError:
