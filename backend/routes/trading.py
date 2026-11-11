@@ -46,8 +46,8 @@ async def get_trading_status():
         except Exception:
             account_status = "unavailable"
 
-    research_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
-    trading_model = os.getenv("TRADING_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
+    research_model = os.getenv("RESEARCH_MODEL", "muse-spark-1.3").split("/")[-1]
+    trading_model = os.getenv("TRADING_MODEL", "muse-spark-1.3").split("/")[-1]
     risk_policy_configured = RiskPolicy.from_env() is not None
     return {
         "mode": "analysis_only",

@@ -7,7 +7,7 @@ Ras Ali AI Trader is the planned evolution of ActionPilot, maintained in this re
 - **Vercel Services** hosts the React/Vite frontend and FastAPI backend in one project and deployment.
 - **MongoDB Atlas** is the persistent application database. Configure `MONGODB_URL` in Vercel's server-side environment.
 - **Kraken Spot REST** supplies public ticker and OHLC market data. Private account reads are opt-in and disabled by default.
-- **AI agents** produce analysis and proposals. They do not receive exchange credentials.
+- **Meta Model API** (`muse-spark-1.3` by default) powers the research, risk and strategy agents. The API key remains server-side. They do not receive exchange credentials.
 - **Order execution is disabled** in this build. No live or paper orders can be submitted.
 
 There is no Vultr dependency. Do not use the retired Vultr VM, its IP address, SSH scripts, or provisioning scripts.
@@ -34,10 +34,11 @@ Set secrets in Vercel project environment settings, not in source files.
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only permissions are verified |
 | `TRADING_PAIR` | Kraken market pair to analyse; defaults to `BTC/USD` |
-| `FEATHERLESS_API_KEY` | Featherless AI provider key |
-| `RESEARCH_MODEL` | Market intelligence model; defaults to Meta Llama 3.3 70B |
-| `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |
-| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta Llama 3.3 70B |
+| `MODEL_API_KEY` | Meta Model API bearer key; create it in the Meta Model API dashboard |
+| `META_MODEL_API_BASE_URL` | Optional Meta API base URL; defaults to `https://api.meta.ai/v1` |
+| `RESEARCH_MODEL` | Market intelligence model; defaults to Meta `muse-spark-1.3` |
+| `RISK_MODEL` | Risk analysis model; defaults to Meta `muse-spark-1.3` |
+| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta `muse-spark-1.3` |
 | `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
 | `RISK_MAX_TRADE_RISK_PCT` | Operator-defined maximum stop-loss risk per proposed trade |
 | `RISK_MAX_DAILY_LOSS_PCT` | Operator-defined daily loss ceiling |
@@ -54,13 +55,17 @@ The backend uses the native PyMongo asynchronous client, reused within the ASGI 
 
 The default database name remains `action_pilot` to preserve the existing collection namespace. The trading routes use the existing `trading_ledger`, `boardroom_history`, and `audit_logs` collections.
 
+## Meta AI provider
+
+All AI chat, market research, risk analysis, strategy synthesis and meeting-note analysis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.
+
 ## Kraken adapter
 
 Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private `Balance` requests use server-side API signing but remain disabled by default until credentials are rotated and the API key's read-only permissions are verified. The adapter no longer depends on the Kraken CLI or a Docker-installed binary.
 
 ## Trading safety requirements
 
-AI model and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform currently runs in **analysis-only mode**. No live or paper orders can be submitted.
+Meta Model API and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform currently runs in **analysis-only mode**. No live or paper orders can be submitted.
 
 The deterministic risk engine is implemented as a standalone component and rejects proposals when its policy is missing or invalid. It is not yet wired to any order-submission path; all execution remains disabled. Before execution can be enabled, the following must be implemented and tested:
 
