@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 import database
 from agents.kraken import KrakenAgent
-from agents.featherless import FeatherlessAgent
+from agents.meta_ai import MetaAIClient
 from agents.transcription import SpeechmaticsAgent
 from decimal import Decimal
 from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
@@ -50,10 +50,10 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 423)
 
     async def test_ai_provider_does_not_return_synthetic_analysis(self):
-        with patch.dict(os.environ, {"FEATHERLESS_API_KEY": ""}):
-            agent = FeatherlessAgent()
+        with patch.dict(os.environ, {"MODEL_API_KEY": ""}):
+            agent = MetaAIClient()
             with self.assertRaisesRegex(RuntimeError, "not configured"):
-                await agent.chat("meta-llama/test", "system", "user")
+                await agent.chat("muse-spark-1.3", "system", "user")
 
     async def test_transcription_does_not_return_mock_text(self):
         with patch.dict(os.environ, {"SPEECHMATICS_API_KEY": ""}):
