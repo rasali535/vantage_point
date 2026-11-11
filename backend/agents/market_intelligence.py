@@ -25,7 +25,12 @@ class MarketIntelligenceAgent:
             user_prompt=json.dumps(prompt, default=str),
         )
         try:
-            data = json.loads(response)
+            raw = response.strip()
+            if raw.startswith("```json"):
+                raw = raw.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif raw.startswith("```"):
+                raw = raw.split("```", 1)[1].split("```", 1)[0].strip()
+            data = json.loads(raw)
             return AgentFinding(agent=self.name, **data)
         except Exception as exc:
             raise RuntimeError("Market Intelligence returned an invalid structured finding.") from exc
