@@ -1,4 +1,4 @@
-import { Shield, Brain, Activity } from 'lucide-react';
+import { Shield, Brain } from 'lucide-react';
 
 interface CouncilProps {
   decision?: {
