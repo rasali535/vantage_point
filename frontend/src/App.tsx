@@ -18,6 +18,7 @@ import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
 import ChatBot from './components/ChatBot';
 import { API_BASE_URL } from './config';
+import PaperTrading from './pages/PaperTrading';
 
 const Boardroom = () => {
   const [deliberations, setDeliberations] = useState<any[]>([]);
@@ -369,6 +370,12 @@ const App: React.FC = () => {
             <LayoutDashboard size={20} /> Dashboard
           </div>
           <div 
+            className={`nav-item ${activeTab === 'paper' ? 'active' : ''}`}
+            onClick={() => setActiveTab('paper')}
+          >
+            <Activity size={20} /> Paper Trading
+          </div>
+          <div 
             className={`nav-item ${activeTab === 'trading' ? 'active' : ''}`}
             onClick={() => setActiveTab('trading')}
           >
@@ -469,6 +476,7 @@ const App: React.FC = () => {
             onRefresh={fetchStatus}
           />
         )}
+        {activeTab === 'paper' && <PaperTrading />}
         {activeTab === 'trading' && (
           <TradingView 
             autoStartScan={triggerScanOnLoad} 
