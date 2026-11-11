@@ -46,6 +46,13 @@ class AutonomousPaperSizingTests(unittest.TestCase):
                 risk_pct=Decimal("0.5"), fee_rate=Decimal("0.0026"),
             )
 
+    def test_default_pair_universe_is_not_btc_only(self):
+        with patch.dict(os.environ, {}, clear=True):
+            pairs = configured_pairs()
+        self.assertGreater(len(pairs), 1)
+        self.assertIn("ETH/USD", pairs)
+        self.assertIn("SOL/USD", pairs)
+
     def test_configured_pairs_support_multiple_crypto_symbols(self):
         with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": "BTC/USD,ETH/USD,SOL/USD"}, clear=False):
             self.assertEqual(configured_pairs(), ["BTC/USD", "ETH/USD", "SOL/USD"])
