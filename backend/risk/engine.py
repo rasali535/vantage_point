@@ -79,6 +79,44 @@ class DeterministicRiskEngine:
     def __init__(self, policy: Optional[RiskPolicy] = None):
         self.policy = policy
 
+
+    def evaluate_portfolio_state(
+        self,
+        daily_loss_pct: Decimal,
+        drawdown_pct: Decimal,
+        open_positions: int,
+        leverage: Decimal,
+    ) -> Dict[str, Any]:
+        """Check account-wide limits before a strategy can proceed to sizing."""
+        policy = self.policy or RiskPolicy.from_env()
+        if policy is None:
+            return {
+                "approved": False,
+                "status": "risk_policy_not_configured",
+                "reasons": ["Risk limits are missing or invalid; operator configuration is required."],
+            }
+
+        values = (daily_loss_pct, drawdown_pct, leverage)
+        if any(not value.is_finite() for value in values):
+            return {"approved": False, "status": "rejected", "reasons": ["Portfolio risk values must be finite."]}
+        reasons = []
+        if daily_loss_pct < 0 or drawdown_pct < 0 or open_positions < 0 or leverage < 1:
+            reasons.append("Portfolio risk values are outside valid bounds.")
+        if daily_loss_pct >= policy.max_daily_loss_pct:
+            reasons.append("Daily loss limit has been reached.")
+        if drawdown_pct >= policy.max_drawdown_pct:
+            reasons.append("Maximum drawdown limit has been reached.")
+        if open_positions >= policy.max_open_positions:
+            reasons.append("Maximum open-position count has been reached.")
+        if leverage > policy.max_leverage:
+            reasons.append("Current leverage exceeds the configured maximum.")
+        return {
+            "approved": not reasons,
+            "status": "portfolio_within_limits" if not reasons else "rejected",
+            "reasons": reasons,
+            "execution_enabled": False,
+        }
+
     def evaluate(self, proposal: OrderProposal) -> Dict[str, Any]:
         policy = self.policy or RiskPolicy.from_env()
         if policy is None:
