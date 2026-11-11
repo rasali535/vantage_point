@@ -51,7 +51,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
         throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}...`);
       }
       const data = await res.json();
-      setLastDecision(data.decision);
+      setLastDecision({ ...data.decision, signal_quality: data.signal_quality_report?.signal_quality_index, whipsaw_risk: data.signal_quality_report?.whipsaw_risk });
       await fetchStatus();
     } catch (err: any) {
       console.error('Scan Error:', err);
