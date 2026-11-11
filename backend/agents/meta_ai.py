@@ -19,6 +19,60 @@ logger.setLevel(logging.INFO)
 
 DEFAULT_META_MODEL = "muse-spark-1.3"
 
+# Preferred chat-capable Muse models, newest first. Used only when the
+# configured model is absent from the key's discovered catalog.
+META_CHAT_MODEL_FALLBACKS = (
+    "muse-spark-1.3",
+    "muse-spark-1.2",
+    "muse-spark-1.1",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2-contributor",
+)
+
+# Catalog entries with these prefixes can serve Chat Completions. Other
+# families (image, voice, segmentation) cannot and are never substituted.
+_CHAT_MODEL_FAMILIES = ("muse-spark", "muse-wonder", "muse-ember")
+
+
+def normalize_model_id(model: Optional[str]) -> str:
+    """Normalize a configured model ID to the bare Meta Model API ID.
+
+    Operators sometimes configure provider-prefixed values
+    (``meta/muse-spark-1.3``, as used by third-party routers). The Meta Model
+    API expects the bare ID, so strip any provider prefix and whitespace.
+    """
+    raw = (model or "").strip()
+    if "/" in raw:
+        raw = raw.rsplit("/", 1)[-1].strip()
+    return raw or DEFAULT_META_MODEL
+
+
+def resolve_available_model(target: str, catalog: List[str]) -> str:
+    """Pick the best usable chat model given the discovered catalog.
+
+    Returns the catalog's own form of the ID so router-style catalogs keep
+    working. Falls back through known Muse chat models, then any chat-family
+    catalog entry. Returns the normalized target when the catalog is empty or
+    holds no chat-capable model, letting the API return the authoritative error.
+    """
+    target_norm = normalize_model_id(target)
+    if not catalog:
+        return target_norm
+    by_norm: Dict[str, str] = {}
+    for entry in catalog:
+        if not isinstance(entry, str) or not entry.strip():
+            continue
+        by_norm.setdefault(normalize_model_id(entry), entry.strip())
+    if target_norm in by_norm:
+        return by_norm[target_norm]
+    for fallback in META_CHAT_MODEL_FALLBACKS:
+        if fallback in by_norm:
+            return by_norm[fallback]
+    for norm, original in by_norm.items():
+        if norm.startswith(_CHAT_MODEL_FAMILIES):
+            return original
+    return target_norm
+
 
 class MetaAIError(RuntimeError):
     """Base exception for all Meta Model API failures."""
@@ -254,33 +308,97 @@ class MetaAIClient:
                 logger.warning("meta_model_catalog_failed error=%s", type(exc).__name__)
                 return self._catalog_cache or []
 
+    def _model_not_found_message(self, requested: str, catalog: List[str]) -> str:
+        """Build an actionable model-not-found message without secrets."""
+        msg = (
+            f"Meta model '{requested}' was not found or is inaccessible "
+            "with configured credentials."
+        )
+        if catalog:
+            msg += (
+                f" Models available to this key ({len(catalog)}): "
+                f"{', '.join(catalog[:8])}."
+            )
+        else:
+            msg += (
+                " The model catalog for this key is empty or unavailable; "
+                "verify MODEL_API_KEY and model access."
+            )
+        return msg
+
+    @staticmethod
+    def _mentions_model(message: Optional[str], model: str) -> bool:
+        text = (message or "").lower()
+        return "model" in text or bool(model) and model.lower() in text
+
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
         """Call Meta's OpenAI-compatible Chat Completions endpoint."""
         self._refresh_credentials()
         if not self.api_key:
             raise MetaAIConfigError("MODEL_API_KEY is not configured.")
 
-        selected_model = (model or DEFAULT_META_MODEL).strip()
+        selected_model = normalize_model_id(model)
 
         # Concurrency-safe catalog discovery
         try:
             discovered = await self.discover_models()
-            if discovered and selected_model not in discovered:
-                logger.warning(
-                    "meta_target_model_not_in_catalog target=%s available_count=%d sample=%s",
-                    selected_model,
-                    len(discovered),
-                    ",".join(discovered[:5]),
-                )
         except MetaAIAuthenticationError:
             raise
         except Exception:
             # If discovery fails or is unreachable, proceed to chat completion
             # rather than failing prematurely on probe issues.
-            pass
+            discovered = []
 
+        resolved_model = resolve_available_model(selected_model, discovered)
+        if normalize_model_id(resolved_model) != selected_model:
+            logger.warning(
+                "meta_model_fallback target=%s resolved=%s available_count=%d sample=%s",
+                selected_model,
+                resolved_model,
+                len(discovered),
+                ",".join(discovered[:5]),
+            )
+
+        try:
+            return await self._post_chat(
+                resolved_model, system_prompt, user_prompt, discovered
+            )
+        except MetaAIModelNotFoundError as first_not_found:
+            # The catalog may have been stale or empty at discovery time.
+            # Refresh once and retry with a different catalog model if one exists.
+            try:
+                fresh = await self.discover_models(force_refresh=True)
+            except Exception:
+                raise first_not_found
+            candidates = [
+                entry
+                for entry in fresh
+                if normalize_model_id(entry) != normalize_model_id(resolved_model)
+            ]
+            retry_model = resolve_available_model(selected_model, candidates)
+            if normalize_model_id(retry_model) == normalize_model_id(resolved_model):
+                raise MetaAIModelNotFoundError(
+                    self._model_not_found_message(selected_model, fresh),
+                    error_code="model_not_found",
+                    status_code=404,
+                ) from first_not_found
+            logger.warning(
+                "meta_model_retry_after_not_found failed=%s retry=%s",
+                resolved_model,
+                retry_model,
+            )
+            return await self._post_chat(retry_model, system_prompt, user_prompt, fresh)
+
+    async def _post_chat(
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        catalog: List[str],
+    ) -> str:
+        """POST one Chat Completions request and map failures to typed errors."""
         payload = {
-            "model": selected_model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -308,20 +426,31 @@ class MetaAIClient:
                 "meta_model_api_http_error status=%s model=%s base_url=%s "
                 "error_code=%s error_type=%s error_message=%s",
                 exc.response.status_code,
-                selected_model,
+                model,
                 self.base_url,
                 err_code,
                 err_type,
                 err_msg,
             )
 
-            if exc.response.status_code == 404 or err_code == "model_not_found":
-                msg = (
-                    f"Meta model '{selected_model}' was not found or is inaccessible "
-                    "with configured credentials."
-                )
+            if err_code == "model_not_found" or (
+                exc.response.status_code == 404
+                and self._mentions_model(err_msg, model)
+            ):
                 raise MetaAIModelNotFoundError(
-                    msg, error_code="model_not_found", status_code=404
+                    self._model_not_found_message(
+                        normalize_model_id(model), catalog
+                    ),
+                    error_code="model_not_found",
+                    status_code=404,
+                ) from exc
+            elif exc.response.status_code == 404:
+                raise MetaAIError(
+                    "Meta Model API endpoint not found (HTTP 404) at "
+                    f"{self.base_url}/chat/completions. "
+                    "Verify META_MODEL_API_BASE_URL.",
+                    error_code="endpoint_not_found",
+                    status_code=404,
                 ) from exc
             elif exc.response.status_code == 401 or err_code == "invalid_api_key":
                 msg = "Meta Model API authentication failed. Verify MODEL_API_KEY."
@@ -340,11 +469,11 @@ class MetaAIClient:
         except httpx.TimeoutException as exc:
             logger.error(
                 "meta_model_api_timeout model=%s base_url=%s",
-                selected_model,
+                model,
                 self.base_url,
             )
             raise MetaAITimeoutError(
-                f"Meta Model API request timed out for model '{selected_model}'.",
+                f"Meta Model API request timed out for model '{model}'.",
                 error_code="timeout",
             ) from exc
 
@@ -352,7 +481,7 @@ class MetaAIClient:
             logger.error(
                 "meta_model_api_response_error error_type=%s model=%s base_url=%s",
                 type(exc).__name__,
-                selected_model,
+                model,
                 self.base_url,
             )
             raise MetaAIResponseError(
@@ -364,7 +493,7 @@ class MetaAIClient:
             logger.error(
                 "meta_model_api_network_error error_type=%s model=%s base_url=%s",
                 type(exc).__name__,
-                selected_model,
+                model,
                 self.base_url,
             )
             raise MetaAIError(
@@ -374,7 +503,7 @@ class MetaAIClient:
 
         if not isinstance(content, str) or not content.strip():
             raise MetaAIResponseError(
-                f"Meta Model API returned empty content for model '{selected_model}'.",
+                f"Meta Model API returned empty content for model '{model}'.",
                 error_code="empty_response",
             )
         return content.strip()
@@ -399,7 +528,8 @@ class MetaAIClient:
 
         try:
             discovered = await self.discover_models()
-            target_found = DEFAULT_META_MODEL in discovered
+            normalized = [normalize_model_id(entry) for entry in discovered]
+            target_found = normalize_model_id(DEFAULT_META_MODEL) in normalized
             return {
                 "status": "ready" if (target_found or len(discovered) > 0) else "catalog_empty",
                 "configured": True,
@@ -408,6 +538,7 @@ class MetaAIClient:
                 "default_model": DEFAULT_META_MODEL,
                 "model_count": len(discovered),
                 "default_model_available": target_found,
+                "models_sample": discovered[:8],
             }
         except MetaAIAuthenticationError:
             return {

@@ -89,6 +89,12 @@ async def get_trading_status():
     }
 
 
+@router.get("/meta/readiness")
+async def get_meta_readiness():
+    # No secrets are exposed; the key appears only as a fingerprint.
+    return await meta_ai.check_readiness()
+
+
 @router.get("/ledger")
 async def get_ledger():
     db = await get_database()

@@ -15,7 +15,9 @@ from agents.meta_ai import (
     MetaAIResponseError,
     MetaAITimeoutError,
     normalize_meta_base_url,
+    normalize_model_id,
     parse_model_catalog,
+    resolve_available_model,
 )
 
 
@@ -342,6 +344,162 @@ class MetaAIClientExecutionTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(result, "OK")
                     headers = mock_post.call_args[1]["headers"]
                     self.assertEqual(headers["Authorization"], f"Bearer {self.test_key}")
+
+
+class MetaAIModelResolutionTests(unittest.TestCase):
+    def test_normalize_model_id_strips_provider_prefix(self):
+        self.assertEqual(normalize_model_id("meta/muse-spark-1.3"), "muse-spark-1.3")
+
+    def test_normalize_model_id_strips_whitespace(self):
+        self.assertEqual(normalize_model_id("  muse-spark-1.3  "), "muse-spark-1.3")
+
+    def test_normalize_model_id_defaults_when_empty(self):
+        self.assertEqual(normalize_model_id(""), DEFAULT_META_MODEL)
+        self.assertEqual(normalize_model_id(None), DEFAULT_META_MODEL)
+        self.assertEqual(normalize_model_id("meta/"), DEFAULT_META_MODEL)
+
+    def test_resolve_prefers_configured_target(self):
+        self.assertEqual(
+            resolve_available_model("muse-spark-1.3", ["muse-spark-1.3", "muse-spark-1.2"]),
+            "muse-spark-1.3",
+        )
+
+    def test_resolve_falls_back_in_preference_order(self):
+        self.assertEqual(
+            resolve_available_model("muse-spark-1.3", ["muse-spark-1.1", "muse-spark-1.2"]),
+            "muse-spark-1.2",
+        )
+
+    def test_resolve_uses_chat_family_entry_as_last_resort(self):
+        self.assertEqual(
+            resolve_available_model("muse-spark-1.3", ["muse-image-1.0", "muse-ember-2.0"]),
+            "muse-ember-2.0",
+        )
+
+    def test_resolve_returns_target_when_no_chat_model_available(self):
+        self.assertEqual(
+            resolve_available_model("muse-spark-1.3", ["muse-image-1.0"]),
+            "muse-spark-1.3",
+        )
+
+    def test_resolve_returns_target_when_catalog_empty(self):
+        self.assertEqual(resolve_available_model("muse-spark-1.3", []), "muse-spark-1.3")
+
+    def test_resolve_matches_prefixed_catalog_entries(self):
+        self.assertEqual(
+            resolve_available_model("meta/muse-spark-1.3", ["meta/muse-spark-1.3"]),
+            "meta/muse-spark-1.3",
+        )
+
+
+class MetaAIModelFallbackTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.test_key = "LLM_test_key_12345"
+        self.env_patch = patch.dict(os.environ, {"MODEL_API_KEY": self.test_key})
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+
+    def _models_response(self, client, model_ids):
+        return httpx.Response(
+            status_code=200,
+            json={"object": "list", "data": [{"id": mid, "object": "model"} for mid in model_ids]},
+            request=httpx.Request("GET", f"{client.base_url}/models"),
+        )
+
+    def _chat_response(self, client, content="OK", model="muse-spark-1.2"):
+        return httpx.Response(
+            status_code=200,
+            json={
+                "id": "chatcmpl-fallback",
+                "object": "chat.completion",
+                "model": model,
+                "choices": [{"message": {"role": "assistant", "content": content}}],
+            },
+            request=httpx.Request("POST", f"{client.base_url}/chat/completions"),
+        )
+
+    def _status_error(self, client, status_code, error_body):
+        mock_response = httpx.Response(
+            status_code=status_code,
+            json=error_body,
+            request=httpx.Request("POST", f"{client.base_url}/chat/completions"),
+        )
+        return httpx.HTTPStatusError(
+            message=f"Client error '{status_code}'",
+            request=mock_response.request,
+            response=mock_response,
+        )
+
+    async def test_chat_uses_catalog_fallback_when_target_missing(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client, ["muse-spark-1.2"])
+            mock_post.return_value = self._chat_response(client)
+            result = await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(result, "OK")
+            self.assertEqual(mock_post.call_args[1]["json"]["model"], "muse-spark-1.2")
+
+    async def test_chat_retries_with_fresh_catalog_after_model_not_found(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.side_effect = [
+                self._models_response(client, []),
+                self._models_response(client, ["muse-spark-1.1"]),
+            ]
+            mock_post.side_effect = [
+                self._status_error(client, 404, {"error": {"code": "model_not_found", "message": "No such model."}}),
+                self._chat_response(client, model="muse-spark-1.1"),
+            ]
+            result = await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(result, "OK")
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertEqual(mock_post.call_args[1]["json"]["model"], "muse-spark-1.1")
+
+    async def test_model_not_found_without_alternative_reports_catalog_sample(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client, ["muse-image-1.0"])
+            mock_post.side_effect = self._status_error(
+                client, 404, {"error": {"code": "model_not_found", "message": "No such model."}}
+            )
+            with self.assertRaises(MetaAIModelNotFoundError) as ctx:
+                await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(ctx.exception.status_code, 404)
+            self.assertEqual(ctx.exception.error_code, "model_not_found")
+            self.assertIn("muse-spark-1.3", ctx.exception.message)
+            self.assertIn("muse-image-1.0", ctx.exception.message)
+            self.assertNotIn(self.test_key, ctx.exception.message)
+
+    async def test_endpoint_404_without_model_error_is_not_model_not_found(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client, [])
+            mock_post.side_effect = self._status_error(
+                client, 404, {"error": {"message": "Not Found"}}
+            )
+            with self.assertRaises(MetaAIError) as ctx:
+                await client.chat("muse-spark-1.3", "system", "user")
+            self.assertNotIsInstance(ctx.exception, MetaAIModelNotFoundError)
+            self.assertEqual(ctx.exception.error_code, "endpoint_not_found")
+            self.assertIn(client.base_url, ctx.exception.message)
+            self.assertNotIn(self.test_key, ctx.exception.message)
+
+    async def test_readiness_reports_catalog_sample_without_key(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = self._models_response(
+                client, ["muse-spark-1.2", "muse-image-1.0"]
+            )
+            status = await client.check_readiness()
+            self.assertEqual(status["model_count"], 2)
+            self.assertIn("muse-spark-1.2", status["models_sample"])
+            self.assertNotIn(self.test_key, str(status))
 
 
 if __name__ == "__main__":
