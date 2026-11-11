@@ -67,7 +67,7 @@ Before execution can be enabled, the following must be implemented and tested:
 
 ## CI
 
-GitHub Actions runs backend compilation and safety tests, plus frontend build and lint checks. Vercel builds the frontend and backend services as part of the preview deployment.
+GitHub Actions runs backend compilation and safety tests plus the frontend TypeScript/Vite production build. The repository still has a legacy ESLint backlog, so lint is tracked separately rather than used as a release gate. Vercel builds the frontend and backend services as part of the preview deployment.
 
 ## Security notice
 
