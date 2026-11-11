@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.kraken import KrakenAgent
 from agents.orchestrator import TradingOrchestrator
+from agents.technical_analyst import TechnicalAnalystAgent
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
 from paper_trading.engine import (
@@ -34,6 +35,7 @@ _worker_task: asyncio.Task | None = None
 _worker_owner = uuid.uuid4().hex
 _market = KrakenAgent()
 _orchestrator = TradingOrchestrator()
+_technical_precheck = TechnicalAnalystAgent()
 
 
 def _utcnow() -> datetime:
@@ -203,6 +205,17 @@ def _portfolio_snapshot(account: dict, prices: dict[str, Decimal]) -> PortfolioR
 
 
 async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: list, portfolio: PortfolioRiskSnapshot, portfolio_prices: dict[str, Decimal]) -> dict:
+    current = account.get("positions", {}).get(pair)
+    technical_precheck = _technical_precheck.analyse(candles)
+    if technical_precheck.signal == TradeAction.HOLD:
+        return {"pair": pair, "decision": "HOLD", "reason": "Deterministic technical pre-check found no entry or exit signal."}
+    if technical_precheck.signal == TradeAction.BUY and current:
+        return {"pair": pair, "decision": "HOLD", "reason": "A paper position is already open for this pair."}
+    if technical_precheck.signal == TradeAction.SELL and not current:
+        return {"pair": pair, "decision": "HOLD", "reason": "No open long position exists to close."}
+
+    # Spend model calls only when deterministic indicators show a compatible
+    # candidate entry or exit; AI remains advisory and the risk gate stays final.
     cycle = await _orchestrator.run(
         pair=pair,
         ticker=ticker,
@@ -220,7 +233,6 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     if signal_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"}:
         action = TradeAction.HOLD
 
-    current = account.get("positions", {}).get(pair)
     if confidence < confidence_floor or action == TradeAction.HOLD:
         return {"pair": pair, "decision": "HOLD", "reason": "Confidence or signal-quality threshold not met."}
 
