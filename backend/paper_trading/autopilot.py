@@ -424,8 +424,12 @@ async def stop_worker() -> None:
 
 
 async def set_autopilot_enabled(db, enabled: bool) -> dict:
-    if enabled and (not _enabled_by_operator() or os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true"):
+    if enabled and (not _enabled_by_operator() or os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_API_TOKEN") or not os.getenv("PAPER_INITIAL_BALANCE_USD")):
         raise PaperTradeError("Autonomous paper trading is not permitted by server configuration.")
+    if enabled and RiskPolicy.from_env() is None:
+        raise PaperTradeError("A complete deterministic risk policy is required before starting the autopilot.")
+    if enabled:
+        configured_pairs()
     record = {
         "_id": "autopilot",
         "enabled": enabled,
@@ -442,6 +446,7 @@ async def autopilot_status(db) -> dict:
     return {
         "enabled": state.get("enabled") is True,
         "worker_configured": _enabled_by_operator(),
+        "worker_running": _worker_task is not None and not _worker_task.done(),
         "paper_trading_enabled": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true",
         "monitor_interval_seconds": max(10, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "20")))),
         "scan_interval_seconds": max(60, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "300")))),
