@@ -47,7 +47,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Paper-Token"],
 )
 
 app.include_router(routes.meetings.router, prefix="/api/meetings", tags=["Meetings"])
