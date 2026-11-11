@@ -83,3 +83,19 @@ GitHub Actions runs backend compilation and safety tests plus the frontend TypeS
 ## Security notice
 
 Historical repository commits contained credentials and remote-server access details. Deleting affected files from the current branch does not erase values from Git history. Rotate/revoke exposed Kraken and SSH credentials, review API-key permissions, and coordinate history cleanup before treating the repository as safe for production use.
+
+
+## Six-agent architecture
+
+The market scan is orchestrated by six distinct agents:
+
+1. **Market Intelligence** — Meta Model API analysis of verified Kraken ticker and candle data only.
+2. **Technical Analyst** — deterministic EMA, RSI and ATR calculations; insufficient history returns HOLD.
+3. **Strategy** — Meta Model API synthesizes the market, technical and risk findings into a typed BUY/SELL/HOLD research proposal.
+4. **Risk Manager** — Meta Model API provides downside and uncertainty analysis. It is advisory only; the deterministic risk engine is authoritative.
+5. **Execution** — validates readiness and configured risk policy. This stage does not submit orders; sizing, human approval, authentication, idempotency and exchange-confirmed lifecycle remain mandatory before any execution implementation.
+6. **Performance** — computes performance only from closed, exchange-confirmed ledger records; it reports insufficient history rather than fabricating metrics.
+
+The six-agent cycle is invoked by `POST /api/trading/scan`. Its complete structured output is persisted to MongoDB boardroom history and its summary to the audit log. All responses are research-only and `execution_enabled` remains false.
+
+Optional model overrides: `MARKET_INTELLIGENCE_MODEL`, `RISK_MODEL`, and `TRADING_MODEL`. All default to Meta `muse-spark-1.3`.
