@@ -45,7 +45,12 @@ Set secrets in Vercel project environment settings, not in source files.
 | `RISK_MAX_DRAWDOWN_PCT` | Operator-defined maximum drawdown |
 | `RISK_MAX_OPEN_POSITIONS` | Operator-defined maximum concurrent positions |
 | `RISK_MAX_LEVERAGE` | Operator-defined maximum leverage |
-| `RISK_REQUIRE_STOP_LOSS` | Explicit `true` or `false`; recommended `true`
+| `RISK_REQUIRE_STOP_LOSS` | Explicit `true` or `false`; recommended `true` |
+| `PAPER_TRADING_ENABLED` | Set `true` only when paper simulation is ready; defaults to `false` |
+| `PAPER_API_TOKEN` | Server-side secret required in the `X-Paper-Token` header |
+| `PAPER_INITIAL_BALANCE_USD` | Explicit starting virtual USD balance; no default is applied |
+| `PAPER_FEE_RATE` | Simulated fee fraction; defaults to `0.0026` (0.26%) |
+| `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `5`
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
@@ -65,9 +70,9 @@ Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private
 
 ## Trading safety requirements
 
-Meta Model API and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform currently runs in **analysis-only mode**. No live or paper orders can be submitted.
+Meta Model API and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform runs in **research + optional paper-simulation mode**. Live execution remains disabled. Paper simulation is disabled unless `PAPER_TRADING_ENABLED=true`, `PAPER_API_TOKEN` and `PAPER_INITIAL_BALANCE_USD` are configured. The `/api/trading/paper/account`, `/api/trading/paper/orders` GET and `/api/trading/paper/orders` POST routes require the `X-Paper-Token` header. Paper fills use the latest public Kraken ticker, configurable fee and slippage assumptions, and a single MongoDB account document with optimistic version checks. Paper BUY orders require a configured deterministic risk policy and a stop-loss when policy requires one. Spot SELL orders can only reduce an existing virtual position; shorting is rejected. Simulated fills are marked `execution_mode=paper` and `exchange_order_submitted=false`. The paper engine does not call Kraken private endpoints or order placement.
 
-The deterministic risk engine is implemented as a standalone component and rejects proposals when its policy is missing or invalid. It is not yet wired to any order-submission path; all execution remains disabled. Before execution can be enabled, the following must be implemented and tested:
+The engine records stop-loss values, but automatic stop-loss/take-profit monitoring and trigger execution are a separate next milestone. Before any live execution can be enabled, the following must be implemented and tested:
 
 - Authentication and authorization for every state-changing route.
 - Integration of the deterministic risk engine into every order path, using operator-configured limits. Missing limits must continue to reject every proposal; no unconfirmed defaults are applied.
