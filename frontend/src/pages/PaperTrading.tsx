@@ -24,6 +24,14 @@ type AutopilotStatus = {
   live_execution_enabled: boolean;
 };
 
+type AutopilotRun = {
+  timestamp: string;
+  status: string;
+  pairs_checked?: number;
+  results?: Array<{ pair: string; decision: string; reason?: string; fill?: { side: string; fill_price: string; quantity: string } }>;
+  protective_exits?: Array<{ pair: string; triggered_by?: string; fill_price?: string }>;
+};
+
 type Account = {
   mode: string;
   currency: string;
@@ -45,6 +53,7 @@ const PaperTrading: React.FC = () => {
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
+  const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRun[]>([]);
   const [pair, setPair] = useState('BTC/USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('0.001');
@@ -76,14 +85,16 @@ const PaperTrading: React.FC = () => {
     if (!silent) setBusy(true);
     setError('');
     try {
-      const [summary, history, autoStatus] = await Promise.all([
+      const [summary, history, autoStatus, autoRuns] = await Promise.all([
         request('account'),
         request('orders'),
         request('autopilot'),
+        request('autopilot/runs'),
       ]);
       setAccount(summary);
       setOrders(Array.isArray(history) ? history : []);
       setAutopilot(autoStatus);
+      setAutopilotRuns(Array.isArray(autoRuns) ? autoRuns : []);
       if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
@@ -220,6 +231,33 @@ const PaperTrading: React.FC = () => {
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
           Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
         </p>
+      </div>
+
+      <div className="glass card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginBottom: 12 }}>Autonomous analysis history</h2>
+        {!autopilotRuns.length ? <p style={{ color: 'var(--text-muted)' }}>No autonomous analysis cycles recorded yet.</p> : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {autopilotRuns.slice(0, 5).map((run, index) => (
+              <div key={`${run.timestamp}-${index}`} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>{new Date(run.timestamp).toLocaleString()}</strong>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{run.status}</span>
+                </div>
+                {run.results?.map((item, itemIndex) => (
+                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6, fontSize: 13 }}>
+                    <span>{item.pair} · {item.decision}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
+                  </div>
+                ))}
+                {run.protective_exits?.map((item, itemIndex) => (
+                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6, fontSize: 13 }}>
+                    Protective exit: {item.pair} · {item.triggered_by || 'triggered'} · {item.fill_price || ''}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid" style={{ marginTop: 8, alignItems: 'start' }}>
