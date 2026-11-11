@@ -265,10 +265,22 @@ async def submit_paper_order(
     _require_paper_access(x_paper_token)
     db = await get_database()
     try:
-        ticker = await get_kraken_agent().get_ticker(payload.pair)
-        reference_price = ticker["last"]
         for _attempt in range(5):
             account = await _get_or_create_paper_account(db)
+            previous = next(
+                (item for item in account.get("orders", []) if item.get("idempotency_key") == payload.idempotency_key),
+                None,
+            )
+            if previous:
+                return {
+                    "fill": {**previous, "duplicate": True},
+                    "account": account_summary(account),
+                    "execution_mode": "paper",
+                    "exchange_order_submitted": False,
+                }
+
+            ticker = await get_kraken_agent().get_ticker(payload.pair)
+            reference_price = ticker["last"]
             portfolio_prices = {}
             for held_pair in account.get("positions", {}).keys():
                 held_ticker = await get_kraken_agent().get_ticker(held_pair)
@@ -304,7 +316,7 @@ async def submit_paper_order(
                 })
                 return {
                     "fill": fill,
-                    "account": account_summary(saved, {payload.pair: reference_price}),
+                    "account": account_summary(saved, {**portfolio_prices, payload.pair: reference_price}),
                     "execution_mode": "paper",
                     "exchange_order_submitted": False,
                 }
