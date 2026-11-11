@@ -142,6 +142,8 @@ async def _release_worker_lease(db) -> None:
 
 
 async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str, Decimal], list[dict]]:
+    original = account
+    working = dict(account)
     prices: dict[str, Decimal] = {}
     for pair in account.get("positions", {}).keys():
         ticker = await _market.get_ticker(pair)
@@ -155,19 +157,20 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
     if day_date != today:
         day_start, day_date = equity, today
 
-    account["peak_equity"] = str(peak)
-    account["day_start_equity"] = str(day_start)
-    account["day_start_date"] = day_date
+    working["peak_equity"] = str(peak)
+    working["day_start_equity"] = str(day_start)
+    working["day_start_date"] = day_date
 
-    updated, triggered = evaluate_protective_triggers(account, prices)
-    if triggered or (
-        updated.get("peak_equity") != account.get("peak_equity")
-        or updated.get("day_start_date") != account.get("day_start_date")
-    ):
-        # Protective evaluation increments version only when a fill occurs.
+    updated, triggered = evaluate_protective_triggers(working, prices)
+    metrics_changed = any(
+        updated.get(key) != original.get(key)
+        for key in ("peak_equity", "day_start_equity", "day_start_date")
+    )
+    if triggered or metrics_changed:
+        # Protective evaluation increments version when it creates fills.
         if not triggered:
-            updated["version"] = int(account.get("version", 0)) + 1
-        saved = await _save_account(db, account, updated)
+            updated["version"] = int(original.get("version", 0)) + 1
+        saved = await _save_account(db, original, updated)
         for fill in triggered:
             await _record_event(db, {
                 **fill,
@@ -195,7 +198,7 @@ def _portfolio_snapshot(account: dict, prices: dict[str, Decimal]) -> PortfolioR
     )
 
 
-async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: list, portfolio: PortfolioRiskSnapshot) -> dict:
+async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: list, portfolio: PortfolioRiskSnapshot, portfolio_prices: dict[str, Decimal]) -> dict:
     cycle = await _orchestrator.run(
         pair=pair,
         ticker=ticker,
@@ -252,7 +255,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             stop_loss_price=stop,
             take_profit_price=target,
             risk_engine=DeterministicRiskEngine(policy),
-            portfolio_prices={**{}},
+            portfolio_prices={**portfolio_prices, pair: D(str(ticker["last"]))},
         )
         saved = await _save_account(db, account, updated)
         await _record_event(db, {
@@ -326,7 +329,7 @@ async def run_autopilot_cycle(db=None) -> dict:
                     _market.get_ticker(pair),
                     _market.get_ohlc(pair, interval=int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "60"))),
                 )
-                result = await _execute_signal(db, account, pair, ticker, candles, portfolio)
+                result = await _execute_signal(db, account, pair, ticker, candles, portfolio, held_prices)
                 results.append(result)
                 # Reload after a fill so subsequent instruments use the same
                 # shared portfolio equity, cash and position budget.
