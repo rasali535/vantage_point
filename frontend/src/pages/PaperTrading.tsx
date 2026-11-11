@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Activity, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, Bot, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 type Position = {
@@ -10,6 +10,17 @@ type Position = {
   market_value: string;
   stop_loss?: string | null;
   take_profit?: string | null;
+};
+
+type AutopilotStatus = {
+  enabled: boolean;
+  worker_configured: boolean;
+  paper_trading_enabled: boolean;
+  monitor_interval_seconds: number;
+  scan_interval_seconds: number;
+  pairs: string[];
+  execution_mode: string;
+  live_execution_enabled: boolean;
 };
 
 type Account = {
@@ -32,6 +43,7 @@ const PaperTrading: React.FC = () => {
   const [token, setToken] = useState('');
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
+  const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
   const [pair, setPair] = useState('BTC/USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('0.001');
@@ -63,13 +75,15 @@ const PaperTrading: React.FC = () => {
     setBusy(true);
     setError('');
     try {
-      const [summary, history] = await Promise.all([
+      const [summary, history, autoStatus] = await Promise.all([
         request('account'),
         request('orders'),
+        request('autopilot'),
       ]);
       setAccount(summary);
       setOrders(Array.isArray(history) ? history : []);
-      setMessage('Paper account refreshed from MongoDB.');
+      setAutopilot(autoStatus);
+      setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
     } finally {
@@ -77,6 +91,26 @@ const PaperTrading: React.FC = () => {
     }
   }, [request, token]);
 
+
+  const toggleAutopilot = async () => {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const action = autopilot?.enabled ? 'autopilot/stop' : 'autopilot/start';
+      await request(action, { method: 'POST' });
+      const latest = await request('autopilot');
+      setAutopilot(latest);
+      setMessage(latest.enabled
+        ? 'Autonomous paper trading started. It will analyse markets and manage virtual positions automatically.'
+        : 'New autonomous entries stopped. Protective exits remain monitored for open paper positions.');
+    } catch (err: any) {
+      setError(err.message || 'Unable to change autonomous trading state.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const monitor = async () => {
     setBusy(true);
@@ -153,6 +187,31 @@ const PaperTrading: React.FC = () => {
             <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8 }}>{value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="glass card" style={{ marginTop: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Bot size={20} /> Autonomous paper trader</h2>
+            <p style={{ color: 'var(--text-muted)', marginTop: 6 }}>
+              Automatically analyses configured markets, opens risk-sized virtual positions, closes on confirmed reversal signals, and monitors stop-loss/take-profit exits.
+            </p>
+          </div>
+          <span className={autopilot?.enabled ? 'badge badge-success' : 'badge'}>
+            {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
+          <button className={autopilot?.enabled ? 'btn' : 'btn btn-primary'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.paper_trading_enabled}>
+            {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
+          </button>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+          </span>
+        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
+          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
+        </p>
       </div>
 
       <div className="grid" style={{ marginTop: 8, alignItems: 'start' }}>
