@@ -1,0 +1,16 @@
+DirectoryIndex index.html
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve real files and directories directly (including Vite assets).
+  RewriteRule ^index\\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Fall back to the Vite entry point for client-side routes.
+  RewriteRule . /index.html [L]
+</IfModule>

@@ -12,6 +12,10 @@ Ras Ali AI Trader is the planned evolution of ActionPilot, maintained in this re
 
 There is no Vultr dependency. Do not use the retired Vultr VM, its IP address, SSH scripts, or provisioning scripts.
 
+## Hostinger static frontend deployment
+
+The frontend can be deployed to Hostinger without a local Node.js installation or a Hostinger Node.js runtime. GitHub Actions builds `frontend/` using Node.js on a GitHub-hosted runner and uploads only `frontend/dist/` over FTPS. The FastAPI backend remains on Vercel and MongoDB Atlas remains the database. Configure the four `HOSTINGER_FTP_*` repository secrets described in [the Hostinger deployment guide](docs/hostinger-deployment.md). The workflow does not deploy from pull requests and will skip the upload until all four secrets are configured.
+
 ## Vercel routing
 
 The root `vercel.json` defines two services. The Vercel project framework must be set to **Services**:
