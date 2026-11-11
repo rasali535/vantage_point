@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import logging
+import uuid
 import os
 from typing import Any, Dict, Literal
 import hmac
@@ -20,6 +22,7 @@ from paper_trading.engine import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 _kraken_agent = None
 
 
@@ -183,15 +186,28 @@ async def scan_and_analyze() -> Dict[str, Any]:
 
 @router.post("/scan")
 async def scan_and_analyze_route():
+    request_id = uuid.uuid4().hex
+    started = datetime.now(timezone.utc)
     try:
-        return await scan_and_analyze()
+        result = await scan_and_analyze()
+        elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+        logger.info("trading_scan_completed request_id=%s elapsed_ms=%d", request_id, elapsed_ms)
+        return result
     except HTTPException:
         raise
     except Exception as exc:
-        # Do not expose provider errors or fall back to fabricated prices.
+        # Keep provider details server-side; never fall back to fabricated data.
+        elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+        logger.exception(
+            "trading_scan_failed request_id=%s elapsed_ms=%d error_type=%s",
+            request_id, elapsed_ms, type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
-            detail="Market analysis is temporarily unavailable. No order was submitted.",
+            detail={
+                "message": "Market analysis is temporarily unavailable. No order was submitted.",
+                "request_id": request_id,
+            },
         ) from exc
 
 

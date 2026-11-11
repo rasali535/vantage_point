@@ -47,15 +47,27 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}...`);
+        let message = `Server Error (${res.status})`;
+        let requestId = '';
+        try {
+          const payload = await res.json();
+          const detail = payload?.detail;
+          if (typeof detail === 'string') message = detail;
+          else if (detail && typeof detail === 'object') {
+            message = detail.message || message;
+            requestId = detail.request_id || '';
+          }
+        } catch {
+          // Keep the status-based message when the server response is not JSON.
+        }
+        throw new Error(requestId ? `${message} (Reference: ${requestId})` : message);
       }
       const data = await res.json();
       setLastDecision({ ...data.decision, signal_quality: data.signal_quality_report?.signal_quality_index, whipsaw_risk: data.signal_quality_report?.whipsaw_risk });
       await fetchStatus();
     } catch (err: any) {
       console.error('Scan Error:', err);
-      alert(`Deliberation Timeout: The Boardroom Council is still debating (or Featherless is under high load). \n\nDetails: ${err.message}`);
+      alert(`Market analysis failed. No order was submitted.\n\nDetails: ${err.message}`);
     }
     setScanning(false);
   };
