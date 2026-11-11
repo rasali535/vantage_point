@@ -41,6 +41,16 @@ class MetaAIClient:
             self.base_url,
             DEFAULT_META_MODEL,
         )
+        # Write directly to stdout as a fallback if the host's logging setup
+        # suppresses or replaces module-level INFO records.
+        print(
+            "meta_model_api_runtime_config "
+            f"key_configured={bool(self.api_key)} "
+            f"key_fingerprint={key_fingerprint} "
+            f"base_url={self.base_url} "
+            f"default_model={DEFAULT_META_MODEL}",
+            flush=True,
+        )
 
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
         if not self.api_key:
