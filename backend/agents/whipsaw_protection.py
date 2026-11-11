@@ -121,7 +121,7 @@ class WhipsawProtectionEngine:
         
         # 2. Volatility Analysis
         atr = self.calculate_atr(ohlc)
-        last_price = float(ohlc[0].get("close", 1.0))
+        last_price = float(ohlc[-1].get("close", 1.0))
         pct_volatility = (atr / last_price) * 100 if last_price > 0 else 0.0
 
         # 3. Directional Cooldown & Hysteresis Lockout
