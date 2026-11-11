@@ -9,7 +9,10 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import HTTPException
-from pymongo import AsyncMongoClient
+try:
+    from pymongo import AsyncMongoClient
+except ImportError:
+    AsyncMongoClient = None
 
 load_dotenv()
 
@@ -27,6 +30,12 @@ def _get_client() -> AsyncMongoClient:
         raise HTTPException(
             status_code=503,
             detail="Database is not configured. Set MONGODB_URL in the server environment.",
+        )
+
+    if AsyncMongoClient is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AsyncMongoClient is not available in the installed pymongo package.",
         )
 
     if _client is None:

@@ -1,9 +1,21 @@
+import logging
+import os
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
-from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
-import os
 
+from agents.meta_ai import (
+    DEFAULT_META_MODEL,
+    MetaAIAuthenticationError,
+    MetaAIConfigError,
+    MetaAIError,
+    MetaAIModelNotFoundError,
+    MetaAITimeoutError,
+    meta_ai,
+)
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -45,7 +57,26 @@ async def chat_with_agent(request: ChatRequest):
         if not isinstance(reply, str) or reply.startswith("Error:") or "Key missing" in reply:
             raise RuntimeError("AI provider unavailable")
         return {"reply": reply}
+    except (MetaAIModelNotFoundError, MetaAIAuthenticationError, MetaAIConfigError) as exc:
+        logger.warning("chat_meta_provider_rejected error=%s", exc.message)
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI assistant is unavailable: {exc.message} No trading action was taken.",
+        ) from exc
+    except MetaAITimeoutError as exc:
+        logger.warning("chat_meta_provider_timeout error=%s", exc.message)
+        raise HTTPException(
+            status_code=504,
+            detail="AI assistant request timed out. No trading action was taken.",
+        ) from exc
+    except MetaAIError as exc:
+        logger.warning("chat_meta_provider_failed error=%s", exc.message)
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI assistant is temporarily unavailable ({exc.error_code or 'provider_error'}). No trading action was taken.",
+        ) from exc
     except Exception as exc:
+        logger.exception("chat_endpoint_failed error_type=%s", type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="AI assistant is temporarily unavailable. No trading action was taken.",
