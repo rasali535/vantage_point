@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-motor
+pymongo[srv]>=4.13,<5
 pydantic
 python-multipart
 python-dotenv
