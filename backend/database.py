@@ -43,6 +43,20 @@ def _get_client() -> AsyncMongoClient:
     return _client
 
 
+async def ping_database() -> None:
+    """Verify the current Atlas connection even when a cached DB handle exists."""
+    try:
+        await _get_client().admin.command("ping")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Never log the MongoDB URI; it can contain database credentials.
+        raise HTTPException(
+            status_code=503,
+            detail="MongoDB is temporarily unavailable. Stateful features are disabled.",
+        ) from exc
+
+
 async def get_database():
     """Return the configured database or fail closed with HTTP 503."""
     global _database
@@ -50,17 +64,9 @@ async def get_database():
     if _database is not None:
         return _database
 
-    client = _get_client()
-    try:
-        await client.admin.command("ping")
-        _database = client[MONGODB_DB_NAME]
-        return _database
-    except Exception as exc:
-        # Never log the MongoDB URI; it can contain database credentials.
-        raise HTTPException(
-            status_code=503,
-            detail="MongoDB is temporarily unavailable. Stateful features are disabled.",
-        ) from exc
+    await ping_database()
+    _database = _get_client()[MONGODB_DB_NAME]
+    return _database
 
 
 async def close_database() -> None:
