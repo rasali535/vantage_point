@@ -20,6 +20,19 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
                 await database.get_database()
         self.assertEqual(raised.exception.status_code, 503)
 
+    async def test_database_ping_detects_restart_with_cached_client(self):
+        class FailingAdmin:
+            async def command(self, _command):
+                raise RuntimeError("database unavailable")
+
+        class CachedClient:
+            admin = FailingAdmin()
+
+        with patch.object(database, "MONGODB_URL", "mongodb://example.invalid"), patch.object(database, "_client", CachedClient()):
+            with self.assertRaises(HTTPException) as raised:
+                await database.ping_database()
+        self.assertEqual(raised.exception.status_code, 503)
+
     async def test_private_account_reads_are_disabled_by_default(self):
         with patch.dict(os.environ, {"KRAKEN_ACCOUNT_READS_ENABLED": "false"}):
             agent = KrakenAgent()
