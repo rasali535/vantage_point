@@ -25,6 +25,7 @@ class MetaAIClient:
     def __init__(self):
         self.api_key = os.getenv("MODEL_API_KEY")
         self.base_url = os.getenv("META_MODEL_API_BASE_URL", "https://api.meta.ai/v1").rstrip("/")
+        self._models_probe_done = False
 
         # A short one-way fingerprint lets operators compare the key loaded by
         # this process with their local key without ever logging the secret.
@@ -52,11 +53,67 @@ class MetaAIClient:
             flush=True,
         )
 
+    async def _probe_model_catalog(self, selected_model: str) -> None:
+        """Check model visibility once per process without exposing credentials."""
+        if self._models_probe_done:
+            return
+        # Mark before awaiting so concurrent agent calls do not duplicate the probe.
+        self._models_probe_done = True
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=5.0)) as client:
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                )
+            if response.is_success:
+                body = response.json()
+                data = body.get("data", []) if isinstance(body, dict) else []
+                model_ids = [
+                    item.get("id")
+                    for item in data
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                ] if isinstance(data, list) else []
+                logger.info(
+                    "meta_model_api_models_probe status=%s target_model=%s "
+                    "target_model_listed=%s model_count=%s model_ids=%s",
+                    response.status_code,
+                    selected_model,
+                    selected_model in model_ids,
+                    len(model_ids),
+                    ",".join(model_ids[:50]),
+                )
+            else:
+                error_code = None
+                error_type = None
+                try:
+                    body = response.json()
+                    error = body.get("error", {}) if isinstance(body, dict) else {}
+                    if isinstance(error, dict):
+                        error_code = error.get("code")
+                        error_type = error.get("type")
+                except (ValueError, TypeError):
+                    pass
+                logger.warning(
+                    "meta_model_api_models_probe status=%s target_model=%s "
+                    "error_code=%s error_type=%s",
+                    response.status_code,
+                    selected_model,
+                    str(error_code)[:120] if error_code is not None else None,
+                    str(error_type)[:120] if error_type is not None else None,
+                )
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            logger.warning(
+                "meta_model_api_models_probe_failed target_model=%s error_type=%s",
+                selected_model,
+                type(exc).__name__,
+            )
+
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
         if not self.api_key:
             raise RuntimeError("MODEL_API_KEY is not configured.")
 
         selected_model = model or DEFAULT_META_MODEL
+        await self._probe_model_catalog(selected_model)
         payload = {
             "model": selected_model,
             "messages": [
