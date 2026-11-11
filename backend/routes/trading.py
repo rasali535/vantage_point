@@ -8,6 +8,7 @@ from agents.kraken import KrakenAgent
 from agents.reasoning import boardroom
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
+from risk.engine import RiskPolicy
 
 router = APIRouter()
 _kraken_agent = None
@@ -47,9 +48,11 @@ async def get_trading_status():
 
     research_model = os.getenv("RESEARCH_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
     trading_model = os.getenv("TRADING_MODEL", "meta-llama/Llama-3.3-70B-Instruct").split("/")[-1]
+    risk_policy_configured = RiskPolicy.from_env() is not None
     return {
         "mode": "analysis_only",
         "execution_enabled": False,
+        "risk_policy_status": "configured" if risk_policy_configured else "not_configured",
         "exchange_status": "public_market_data_only",
         "account_status": account_status,
         "balance": balance,
