@@ -105,7 +105,6 @@ async def scan_and_analyze() -> Dict[str, Any]:
         k_agent.get_ohlc(trading_pair),
     )
 
-    baseline = whipsaw_protection.evaluate_signal_quality(candles, [], "HOLD")
     portfolio = PortfolioRiskSnapshot()
     closed_trades = await db.trading_ledger.find({
         "status": "closed", "exchange_confirmed": True
