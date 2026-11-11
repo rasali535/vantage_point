@@ -15,26 +15,35 @@ In **Repository → Settings → Secrets and variables → Actions**, create the
 
 | Secret | Value |
 | --- | --- |
-| `HOSTINGER_FTP_SERVER` | FTP hostname shown in Hostinger (hostname only; no scheme or path) |
-| `HOSTINGER_FTP_USERNAME` | FTP account username |
-| `HOSTINGER_FTP_PASSWORD` | FTP account password |
-| `HOSTINGER_FTP_SERVER_DIR` | Exact remote directory for this domain's document root, with a trailing slash |
+| `HOSTINGER_SFTP_HOST` | The IP address shown in Hostinger hPanel under Advanced → SSH Access (use the displayed IP, not the FTP hostname) |
+| `HOSTINGER_SFTP_USERNAME` | The FTP/SSH username shown in the same section |
+| `HOSTINGER_SFTP_PRIVATE_KEY` | The private key matching the public key added to Hostinger |
+| `HOSTINGER_SFTP_REMOTE_PATH` | Exact absolute path to this website's document root |
 
-Use the FTP account created for this website and restrict it to the website's document root where Hostinger allows this. Do not paste credentials into chat, source files, workflow logs, or commits.
+Do not paste credentials or private keys into chat, source files, workflow logs, or commits.
 
-The remote directory varies by Hostinger account and FTP user. Confirm it in Hostinger's FTP Accounts / connection details. It may be `/public_html/` or a domain-specific path such as `/domains/example.com/public_html/`; do not guess. The workflow deliberately requires the path as a secret so it cannot silently deploy to the wrong directory.
+### Configure an SSH key
+
+1. Generate a dedicated Ed25519 key pair for this deployment on a trusted computer:
+   `ssh-keygen -t ed25519 -C "vantage-point-hostinger-deploy" -f hostinger_vantage_point`
+2. In Hostinger hPanel, open **Advanced → SSH Access** (or **Remote Access → SSH/SFTP Keys**, depending on the hosting interface) and add the contents of `hostinger_vantage_point.pub`.
+3. Add the contents of the private `hostinger_vantage_point` file as the GitHub Actions secret `HOSTINGER_SFTP_PRIVATE_KEY`. Keep the private key private.
+4. Copy the IP address and SSH username shown by Hostinger into the matching GitHub secrets. The workflow uses Hostinger's SFTP port **65002**.
+5. Confirm the exact remote document-root path in Hostinger File Manager / FTP or SSH details. Do not guess it; it varies by account and domain.
+
+Hostinger's SFTP connection instructions specify the SSH Access IP, FTP/SSH username, and port 65002. See [Hostinger's SFTP guide](https://support.hostinger.com/en/articles/5972689-how-to-connect-to-your-hosting-using-sftp).
 
 ## Deployment
 
 - A push to `main` builds and deploys `frontend/dist/` to the configured Hostinger directory.
 - A manual run is available under **Actions → Hostinger static frontend deployment → Run workflow**.
 - Pull requests are built by the existing CI workflow; they do not deploy.
-- If FTP secrets are missing, the workflow still verifies the production build and reports that deployment was skipped.
-- The workflow uses FTPS on port 21 and does not perform a destructive clean-slate of the destination.
+- If SFTP secrets are missing, the workflow still verifies the production build and reports that deployment was skipped.
+- Deployment uses SFTP over SSH on port 65002. It does not delete the destination directory or perform a destructive clean-slate.
 
 ## Hostinger site configuration
 
-This is a static deployment. The Hostinger site should serve files from the same remote directory configured in `HOSTINGER_FTP_SERVER_DIR`. Do not configure this deployment as a PHP/Composer application or a Node.js application. The `frontend/public/.htaccess` file is copied into the Vite output and provides the Apache SPA fallback.
+This is a static deployment. The Hostinger site should serve files from the same remote directory configured in `HOSTINGER_SFTP_REMOTE_PATH`. Do not configure this deployment as a PHP/Composer application or a Node.js application. The `frontend/public/.htaccess` file is copied into the Vite output and provides the Apache SPA fallback.
 
 ## API CORS
 
