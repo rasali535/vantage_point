@@ -32,7 +32,11 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/status`);
       const data = await res.json();
-      setStatus(data);
+      if (!res.ok) {
+        setStatus({ balance: null, history: [], pnl_24h: null, active_strategy: 'Unavailable', exchange_status: 'unavailable', error: data.detail || 'Service unavailable' });
+        return;
+      }
+      setStatus({ ...data, history: Array.isArray(data.history) ? data.history : [] });
     } catch (err) {
       console.error(err);
     }
@@ -63,7 +67,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
       {/* Header Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
         <div className="glass card">
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Exchange Balance (paper account)</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Kraken Account Balance</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <DollarSign size={20} color="var(--success)" /> {status.balance?.USD != null ? status.balance.USD.toLocaleString() : 'Unavailable'}
           </div>
@@ -114,7 +118,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {status.history.map((trade: any) => (
+                  {(status.history || []).map((trade: any) => (
                     <tr key={trade.id || trade.order_id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                       <td style={{ padding: '1rem', fontWeight: 600 }}>{trade.symbol}</td>
                       <td style={{ padding: '1rem' }}>
