@@ -1,77 +1,106 @@
-import asyncio
-import json
+"""Kraken Spot REST adapter.
+
+Public market data uses Kraken's unauthenticated REST endpoints. Private
+account reads are opt-in and require server-side credentials. Order placement
+is intentionally unavailable until the independent risk and execution
+subsystems have passed review.
+"""
+import base64
+import hashlib
+import hmac
 import os
-import subprocess
+import time
 from typing import Dict, List
+from urllib.parse import urlencode
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
+KRAKEN_API_BASE = "https://api.kraken.com/0"
+
 
 class KrakenAgent:
-    """Server-side Kraken CLI adapter.
-
-    This adapter deliberately fails closed. It never invents prices, balances,
-    candle data, order IDs, or fills when the CLI/exchange is unavailable.
-    """
-
     def __init__(self):
-        self.kraken_path = os.getenv("KRAKEN_CLI_PATH", "kraken")
         self.api_key = os.getenv("KRAKEN_API_KEY")
         self.api_secret = os.getenv("KRAKEN_API_SECRET")
+        self.account_reads_enabled = os.getenv("KRAKEN_ACCOUNT_READS_ENABLED", "false").lower() == "true"
 
-    async def _run(self, args: List[str]) -> Dict:
+    async def _public_request(self, endpoint: str, params: Dict[str, str]) -> Dict:
+        url = f"{KRAKEN_API_BASE}/public/{endpoint}"
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError("Kraken public market-data request failed.") from exc
+
+        errors = payload.get("error", [])
+        if errors:
+            raise RuntimeError("Kraken rejected the market-data request.")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError("Kraken returned an invalid market-data response.")
+        return result
+
+    def _private_signature(self, path: str, nonce: str, form_data: str) -> str:
+        if not self.api_secret:
+            raise RuntimeError("Kraken API secret is not configured.")
+
+        try:
+            secret = base64.b64decode(self.api_secret, validate=True)
+        except Exception as exc:
+            raise RuntimeError("Kraken API secret has an invalid encoding.") from exc
+
+        digest = hashlib.sha256((nonce + form_data).encode("utf-8")).digest()
+        message = path.encode("utf-8") + digest
+        signature = hmac.new(secret, message, hashlib.sha512).digest()
+        return base64.b64encode(signature).decode("ascii")
+
+    async def _private_request(self, endpoint: str, params: Dict[str, str] | None = None) -> Dict:
+        if not self.account_reads_enabled:
+            raise RuntimeError("Kraken account reads are disabled until credentials are rotated and verified.")
         if not self.api_key or not self.api_secret:
-            raise RuntimeError("Kraken credentials are not configured on the server.")
+            raise RuntimeError("Kraken account credentials are not configured.")
 
-        env = os.environ.copy()
-        env["KRAKEN_API_KEY"] = self.api_key
-        env["KRAKEN_API_SECRET"] = self.api_secret
-
-        command_args = list(args)
-        if "-o" not in command_args and "--output" not in command_args:
-            command_args.extend(["-o", "json"])
+        path = f"/0/private/{endpoint}"
+        nonce = str(time.time_ns())
+        payload = {"nonce": nonce, **(params or {})}
+        form_data = urlencode(payload)
+        signature = self._private_signature(path, nonce, form_data)
 
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [self.kraken_path, *command_args],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=8.0,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise RuntimeError("Kraken CLI is unavailable or timed out.") from exc
+            async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
+                response = await client.post(
+                    f"{KRAKEN_API_BASE}/private/{endpoint}",
+                    content=form_data,
+                    headers={
+                        "API-Key": self.api_key,
+                        "API-Sign": signature,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError("Kraken private account request failed.") from exc
 
-        if result.returncode != 0:
-            # CLI stderr can contain sensitive diagnostics; do not expose it.
-            raise RuntimeError("Kraken request failed.")
-
-        try:
-            payload = json.loads(result.stdout)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("Kraken returned an invalid response.") from exc
-
-        if not isinstance(payload, dict):
-            raise RuntimeError("Kraken returned an unexpected response.")
-        if payload.get("error"):
-            raise RuntimeError("Kraken reported an exchange error.")
-        return payload
+        if result.get("error"):
+            raise RuntimeError("Kraken rejected the private account request.")
+        data = result.get("result")
+        if not isinstance(data, dict):
+            raise RuntimeError("Kraken returned an invalid private account response.")
+        return data
 
     async def get_ticker(self, pair: str) -> Dict:
-        args = ["ticker", pair]
-        if "x/" in pair:
-            args.extend(["--asset-class", "tokenized_asset"])
+        result = await self._public_request("Ticker", {"pair": pair})
+        if not result:
+            raise RuntimeError("Kraken returned no ticker for the requested pair.")
 
-        response = await self._run(args)
-        raw = response.get(pair)
-        if not isinstance(raw, dict) and response:
-            raw = next(iter(response.values()))
-        if not isinstance(raw, dict):
-            raise RuntimeError("Kraken did not return ticker data for the requested pair.")
-
+        # Kraken's internal pair key can differ from its human-readable alias.
+        raw = next(iter(result.values()))
         ticker = {
             "pair": pair,
             "ask": float((raw.get("a") or [0])[0]),
@@ -81,7 +110,7 @@ class KrakenAgent:
             "low_24h": float((raw.get("l") or [0, 0])[1]),
             "volume_24h": float((raw.get("v") or [0, 0])[1]),
             "open": float(raw.get("o") or 0),
-            "source": "kraken",
+            "source": "kraken_spot_rest",
         }
         if ticker["last"] <= 0 or ticker["bid"] <= 0 or ticker["ask"] <= 0:
             raise RuntimeError("Kraken returned incomplete ticker data.")
@@ -92,16 +121,19 @@ class KrakenAgent:
         return ticker
 
     async def get_ohlc(self, pair: str, interval: int = 60) -> List[Dict]:
-        response = await self._run(["ohlc", pair, "--interval", str(interval)])
-        candles = response.get(pair, [])
+        result = await self._public_request(
+            "OHLC",
+            {"pair": pair, "interval": str(interval)},
+        )
+        candles = next((value for key, value in result.items() if key != "last"), None)
         if not isinstance(candles, list) or not candles:
-            raise RuntimeError("Kraken did not return OHLC data for the requested pair.")
+            raise RuntimeError("Kraken returned no OHLC data for the requested pair.")
 
         parsed = []
         for candle in candles:
             if isinstance(candle, list) and len(candle) >= 7:
                 parsed.append({
-                    "timestamp": candle[0],
+                    "timestamp": int(candle[0]),
                     "open": float(candle[1]),
                     "high": float(candle[2]),
                     "low": float(candle[3]),
@@ -113,25 +145,25 @@ class KrakenAgent:
             raise RuntimeError("Kraken returned malformed OHLC data.")
         return parsed
 
-    async def get_paper_status(self) -> Dict:
-        response = await self._run(["paper", "status"])
-        if "current_value" not in response:
-            raise RuntimeError("Kraken paper account status is unavailable.")
-        return response
+    async def get_balance(self) -> Dict:
+        balances = await self._private_request("Balance")
+        normalized = {}
+        for asset, amount in balances.items():
+            try:
+                value = float(amount)
+            except (TypeError, ValueError):
+                continue
+            if value:
+                normalized[asset] = value
+
+        usd = normalized.pop("ZUSD", normalized.pop("USD", 0.0))
+        return {
+            "USD": usd,
+            "holdings": normalized,
+            "source": "kraken_private_balance",
+        }
 
     async def execute_trade(self, symbol: str, side: str, volume: float) -> Dict:
-        if side.lower() not in {"buy", "sell"}:
-            raise ValueError("Trade side must be buy or sell.")
-        if volume <= 0:
-            raise ValueError("Trade volume must be greater than zero.")
-
-        pair = symbol if "/" in symbol else f"{symbol}/USD"
-        return await self._run(["paper", side.lower(), pair, str(volume), "--yes"])
-
-    async def get_balance(self) -> Dict:
-        status = await self.get_paper_status()
-        return {
-            "USD": status.get("current_value", 0),
-            "holdings": status.get("holdings", {}),
-            "source": "kraken_paper",
-        }
+        raise RuntimeError(
+            "Order placement is disabled. A reviewed risk gate and execution lifecycle are required first."
+        )
