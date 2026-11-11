@@ -25,11 +25,10 @@ class MetaAIClient:
         payload = {
             "model": model or DEFAULT_META_MODEL,
             "messages": [
-                {"role": "system", "content": system_prompt},
+                {"role": "developer", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.2,
-            "max_tokens": 1200,
+            "max_completion_tokens": 1200,
         }
 
         try:
