@@ -6,7 +6,7 @@ Ras Ali AI Trader is the planned evolution of ActionPilot, maintained in this re
 
 - **Vercel** hosts the React frontend and FastAPI backend as services in one deployment.
 - **MongoDB Atlas** is the persistent application database. Configure the connection string as the Vercel environment variable `MONGODB_URL`.
-- **Kraken** is the initial exchange integration. Exchange credentials belong only in server-side environment variables and must never be exposed to the browser or AI agents.
+- **Kraken** is the initial exchange integration. The adapter uses Kraken Spot REST for public ticker/OHLC data. Optional private account reads are disabled by default and require `KRAKEN_ACCOUNT_READS_ENABLED=true` after credential rotation. Exchange credentials belong only in server-side environment variables and must never be exposed to the browser or AI agents.
 - **AI agents** produce analysis and proposals. A separate deterministic risk engine must approve every order before an execution adapter can submit it.
 
 There is no Vultr dependency. Do not use the retired Vultr VM, its IP address, SSH scripts, or provisioning scripts.
@@ -28,7 +28,8 @@ Set secrets in the Vercel project environment settings, not in source files:
 | --- | --- |
 | `MONGODB_URL` | MongoDB Atlas connection URI |
 | `KRAKEN_API_KEY` | Server-side Kraken API key |
-| `KRAKEN_API_SECRET` | Server-side Kraken API secret |
+| `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
+| `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only access is verified |
 | `TRADING_PAIR` | Explicitly configured Kraken market pair |
 | `TRADE_SIZE_USD` | Maximum proposed notional size for the current strategy |
 | `FEATHERLESS_API_KEY` | AI model provider, when enabled |
