@@ -40,6 +40,10 @@ Do not commit real values or share them in logs. Use a least-privilege Kraken ke
 
 Install frontend dependencies from `frontend/` and backend dependencies from `backend/requirements.txt`. For local MongoDB development, `docker-compose.yml` provides a local MongoDB service. Configure a local `.env` file and never commit it.
 
+## Exchange adapter compatibility
+
+The current Kraken agent shells out to the `kraken` CLI. That CLI is installed by the Dockerfile, but the Vercel backend service does not build or run that Dockerfile. Consequently, Kraken market-data and paper-trading calls are not yet deployment-ready on Vercel. The next implementation step is to replace the subprocess dependency with a tested server-side Kraken API adapter (or another explicitly supported runtime installation approach) while preserving the existing account integration. Do not enable trading until this is complete.
+
 ## Trading safety requirements
 
 The platform must default to simulation/paper mode. Live execution remains disabled until the exchange adapter, authentication, deterministic risk checks, order lifecycle, persistence and audit trail have been tested.
