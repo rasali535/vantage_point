@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VITE_API_URL: https://actionpilot.vercel.app
-      HOSTINGER_FTP_SERVER: ${{ secrets.HOSTINGER_FTP_SERVER }}
-      HOSTINGER_FTP_USERNAME: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-      HOSTINGER_FTP_PASSWORD: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-      HOSTINGER_FTP_SERVER_DIR: ${{ secrets.HOSTINGER_FTP_SERVER_DIR }}
+      HOSTINGER_SFTP_HOST: ${{ secrets.HOSTINGER_SFTP_HOST }}
+      HOSTINGER_SFTP_USERNAME: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
+      HOSTINGER_SFTP_PRIVATE_KEY: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
+      HOSTINGER_SFTP_REMOTE_PATH: ${{ secrets.HOSTINGER_SFTP_REMOTE_PATH }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -47,19 +47,21 @@ jobs:
           test -d frontend/dist/assets
           echo "Vite production output verified."
 
-      - name: Deploy frontend to Hostinger over FTPS
-        if: ${{ env.HOSTINGER_FTP_SERVER != '' && env.HOSTINGER_FTP_USERNAME != '' && env.HOSTINGER_FTP_PASSWORD != '' && env.HOSTINGER_FTP_SERVER_DIR != '' }}
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+      - name: Deploy frontend to Hostinger over SFTP
+        if: ${{ env.HOSTINGER_SFTP_HOST != '' && env.HOSTINGER_SFTP_USERNAME != '' && env.HOSTINGER_SFTP_PRIVATE_KEY != '' && env.HOSTINGER_SFTP_REMOTE_PATH != '' }}
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
         with:
-          server: ${{ env.HOSTINGER_FTP_SERVER }}
-          username: ${{ env.HOSTINGER_FTP_USERNAME }}
-          password: ${{ env.HOSTINGER_FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: frontend/dist/
-          server-dir: ${{ env.HOSTINGER_FTP_SERVER_DIR }}
+          server: ${{ env.HOSTINGER_SFTP_HOST }}
+          port: 65002
+          username: ${{ env.HOSTINGER_SFTP_USERNAME }}
+          ssh_private_key: ${{ env.HOSTINGER_SFTP_PRIVATE_KEY }}
+          local_path: ./frontend/dist/*
+          remote_path: ${{ env.HOSTINGER_SFTP_REMOTE_PATH }}
+          sftp_only: true
+          delete_remote_files: false
+          sftpArgs: -o ConnectTimeout=20
 
       - name: Explain skipped deployment
-        if: ${{ env.HOSTINGER_FTP_SERVER == '' || env.HOSTINGER_FTP_USERNAME == '' || env.HOSTINGER_FTP_PASSWORD == '' || env.HOSTINGER_FTP_SERVER_DIR == '' }}
+        if: ${{ env.HOSTINGER_SFTP_HOST == '' || env.HOSTINGER_SFTP_USERNAME == '' || env.HOSTINGER_SFTP_PRIVATE_KEY == '' || env.HOSTINGER_SFTP_REMOTE_PATH == '' }}
         run: |
-          echo "::notice::Frontend build passed, but Hostinger deployment was skipped because one or more HOSTINGER_FTP_* GitHub Actions secrets are not configured."
+          echo "::notice::Frontend build passed, but Hostinger deployment was skipped because one or more HOSTINGER_SFTP_* GitHub Actions secrets are not configured."
