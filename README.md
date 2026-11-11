@@ -34,7 +34,11 @@ Set secrets in Vercel project environment settings, not in source files.
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only permissions are verified |
 | `TRADING_PAIR` | Kraken market pair to analyse; defaults to `XBT/USD` |
-| `FEATHERLESS_API_KEY` | Featherless AI provider key |\n| `RESEARCH_MODEL` | Market intelligence model; defaults to Meta Llama 3.3 70B |\n| `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |\n| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta Llama 3.3 70B |\n| `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
+| `FEATHERLESS_API_KEY` | Featherless AI provider key |
+| `RESEARCH_MODEL` | Market intelligence model; defaults to Meta Llama 3.3 70B |
+| `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |
+| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta Llama 3.3 70B |
+| `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
