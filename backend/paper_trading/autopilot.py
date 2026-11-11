@@ -47,8 +47,11 @@ def _enabled_by_operator() -> bool:
 def configured_pairs() -> list[str]:
     raw = os.getenv("PAPER_AUTOTRADE_PAIRS", os.getenv("TRADING_PAIR", "BTC/USD"))
     pairs = list(dict.fromkeys(item.strip().upper() for item in raw.split(",") if item.strip()))
-    if not pairs or len(pairs) > 20 or any("/" not in pair for pair in pairs):
-        raise PaperTradeError("PAPER_AUTOTRADE_PAIRS must contain 1–20 valid BASE/QUOTE symbols.")
+    if (
+        not pairs or len(pairs) > 20
+        or any("/" not in pair or pair.split("/")[-1] != "USD" for pair in pairs)
+    ):
+        raise PaperTradeError("The current Kraken spot autopilot accepts 1–20 USD-quoted crypto pairs only.")
     return pairs
 
 
@@ -112,7 +115,7 @@ async def _record_event(db, event: dict) -> None:
 
 async def _acquire_worker_lease(db) -> bool:
     now = _utcnow()
-    expires = now + timedelta(seconds=90)
+    expires = now + timedelta(seconds=600)
     try:
         await db.paper_autopilot_worker.insert_one({
             "_id": "singleton",
@@ -204,10 +207,12 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         ticker=ticker,
         candles=candles,
         portfolio=portfolio,
-        closed_trades=[],
+        closed_trades=account.get("orders", []),
     )
     action = cycle.strategy.action
     confidence_floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.70"))
+    if not D("0.5") <= confidence_floor <= D("1"):
+        return {"pair": pair, "decision": "HOLD", "reason": "Autonomous confidence threshold is outside the safe 0.5–1.0 range."}
     confidence = D(str(cycle.strategy.confidence))
     technical_signal = cycle.technical_analysis.signal
     signal_report = whipsaw_protection.evaluate_signal_quality(candles, [], action.value)
@@ -225,8 +230,9 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             return {"pair": pair, "decision": "HOLD", "reason": "ATR unavailable; safe stop distance cannot be calculated."}
 
         price = D(str(ticker["last"]))
-        fee_rate = D(os.getenv("PAPER_FEE_RATE", "0.0026"))
-        slippage = D(os.getenv("PAPER_SLIPPAGE_BPS", "5")) / D("10000")
+        from paper_trading.engine import simulation_settings
+        fee_rate, slippage_bps = simulation_settings()
+        slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
         stop_distance = max(D(str(cycle.technical_analysis.atr)) * D("1.5"), entry_estimate * D("0.001"))
         stop = entry_estimate - stop_distance
