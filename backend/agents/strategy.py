@@ -20,6 +20,11 @@ class StrategyAgent:
             user_prompt=json.dumps({"market_intelligence": market, "technical_analysis": technical, "risk_assessment": risk}, default=str),
         )
         try:
-            return StrategyProposal.model_validate_json(response)
+            raw = response.strip()
+            if raw.startswith("```json"):
+                raw = raw.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif raw.startswith("```"):
+                raw = raw.split("```", 1)[1].split("```", 1)[0].strip()
+            return StrategyProposal.model_validate_json(raw)
         except Exception as exc:
             raise RuntimeError("Strategy agent returned an invalid proposal.") from exc
