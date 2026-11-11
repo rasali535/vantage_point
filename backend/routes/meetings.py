@@ -52,57 +52,9 @@ async def process_meeting(transcript: str, title: str, image_path: str = None, d
         pair="Meeting Analysis"
     )
     
-    # 2b. If CFO Voice Memo is ingested, autonomously reallocate assets!
-    if "Reallocate" in transcript or "CFO" in transcript or "BTCx" in transcript:
-        try:
-            from agents.kraken import KrakenAgent
-            from datetime import datetime
-            k_agent = KrakenAgent()
-            
-            # Execute simulated reallocation by subtracting float and executing paper purchase
-            k_agent.add_expense(20000.0) # Withdraw from stock float to invest in digital reserve
-            ticker = await k_agent.get_ticker("BTC/USD")
-            last_price = float(ticker.get("last", 75000.0))
-            volume = round(20000.0 / last_price, 6)
-            
-            # Log the rebalance transaction to ledger
-            trade_entry = {
-                "order_id": f"ASR-{os.urandom(3).hex().upper()}",
-                "symbol": "BTC/USD",
-                "side": "buy",
-                "volume": volume,
-                "price": last_price,
-                "timestamp": datetime.now().isoformat(),
-                "status": "filled",
-                "reasoning": f"Speechmatics ASR: CFO Voice Memo executed. Liquidated stock float to accumulate {volume} units of BTCx."
-            }
-            if db is not None:
-                await db.trading_ledger.insert_one(trade_entry)
-            
-            # Create a boardroom history entry for this council action!
-            delib_entry = {
-                "symbol": "BTC/USD",
-                "action": "BUY",
-                "timestamp": datetime.now().isoformat(),
-                "reasoning": f"BOARDROOM CONSENSUS: CFO Voice Memo authorized $20,000 reallocation to digital assets. CEO (Gemini) approved treasury sweep. Risk Officer verified compliance boundaries. Macro Strategist confirmed long-term momentum.",
-                "risk_score": 15,
-                "confidence": 0.99
-            }
-            if db is not None:
-                await db.boardroom_history.insert_one(delib_entry)
-
-            # Log SOX compliance audit event
-            audit_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "agent": "Audit (Llama)",
-                "action": "Autonomous Voice Rebalance",
-                "reasoning": f"SOX compliant execution of Speechmatics CFO voice memo. Volume: {volume} BTCx.",
-                "status": "success"
-            }
-            if db is not None:
-                await db.audit_logs.insert_one(audit_entry)
-        except Exception as ex:
-            print(f"Error executing autonomous voice rebalance: {ex}")
+    # Financial actions extracted from meeting transcripts are never executed.
+    # This workflow records analysis only; trade execution is disabled until
+    # authentication, risk controls and exchange-confirmed order handling exist.
 
     # 3. Save Tasks
     tasks = []
