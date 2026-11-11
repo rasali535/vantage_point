@@ -51,6 +51,23 @@ class SixAgentArchitectureTests(unittest.TestCase):
         self.assertEqual(result.status, "risk_policy_not_configured")
         self.assertFalse(result.execution_enabled)
 
+    def test_execution_agent_blocks_when_daily_loss_limit_is_reached(self):
+        policy = RiskPolicy(
+            max_trade_risk_pct=Decimal("0.5"),
+            max_daily_loss_pct=Decimal("2"),
+            max_drawdown_pct=Decimal("5"),
+            max_open_positions=5,
+            max_leverage=Decimal("1"),
+            require_stop_loss=True,
+        )
+        agent = ExecutionAgent(DeterministicRiskEngine(policy))
+        proposal = StrategyProposal(action=TradeAction.BUY, rationale="test", confidence=0.8)
+        portfolio = PortfolioRiskSnapshot(equity=Decimal("10000"), daily_loss_pct=Decimal("2"))
+        result = agent.assess("BTC/USD", proposal, Decimal("50000"), portfolio)
+        self.assertEqual(result.status, "rejected")
+        self.assertIn("Daily loss limit has been reached.", result.reasons)
+        self.assertFalse(result.execution_enabled)
+
     def test_performance_ignores_unconfirmed_or_open_trades(self):
         result = PerformanceAgent().summarize([
             {"status": "closed", "exchange_confirmed": True, "realized_pnl": 12.5},
