@@ -29,9 +29,12 @@ class KrakenAgent:
 
     async def _public_request(self, endpoint: str, params: Dict[str, str]) -> Dict:
         url = f"{KRAKEN_API_BASE}/public/{endpoint}"
+        # Use Kraken's display-name asset version so BTC/USD is stable in
+        # API responses instead of requiring legacy XXBTZUSD pair identifiers.
+        request_params = {**params, "assetVersion": "1"}
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
-                response = await client.get(url, params=params)
+                response = await client.get(url, params=request_params)
                 response.raise_for_status()
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
