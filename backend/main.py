@@ -1,5 +1,8 @@
 from contextlib import asynccontextmanager
+import logging
 import os
+import traceback
+import uuid
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +13,9 @@ import routes.meetings
 import routes.trading
 import routes.chat
 from database import close_database, ping_database
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -23,12 +29,33 @@ app = FastAPI(title="Ras Ali AI Trader API", version="0.2.0", lifespan=lifespan)
 
 @app.exception_handler(PyMongoError)
 async def mongodb_unavailable_handler(request, exc):
-    # A cached client can lose its Atlas connection after startup. Normalize
-    # subsequent driver failures to 503 instead of leaking internal errors.
+    # Preserve the safe public response while exposing enough server-side
+    # context to identify the failing MongoDB operation. Do not log exception
+    # messages because driver errors can contain connection details.
+    request_id = uuid.uuid4().hex
+    frames = traceback.extract_tb(exc.__traceback__)
+    locations = " <- ".join(
+        f"{frame.filename}:{frame.lineno}:{frame.name}" for frame in frames[-6:]
+    )
+    logger.error(
+        "mongodb_operation_failed request_id=%s method=%s path=%s error_type=%s "
+        "code=%s code_name=%s traceback=%s",
+        request_id,
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        getattr(exc, "code", None),
+        getattr(exc, "code_name", None),
+        locations,
+    )
     return JSONResponse(
         status_code=503,
-        content={"detail": "MongoDB is temporarily unavailable. No trading action was executed."},
+        content={
+            "detail": "MongoDB is temporarily unavailable. No trading action was executed.",
+            "request_id": request_id,
+        },
     )
+
 
 # Explicit origins only. Keep the production Hostinger frontend in the
 # built-in allowlist so a missing or incomplete Vercel CORS_ORIGINS value
