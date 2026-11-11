@@ -6,6 +6,8 @@ from fastapi import HTTPException
 
 import database
 from agents.kraken import KrakenAgent
+from agents.featherless import FeatherlessAgent
+from agents.transcription import SpeechmaticsAgent
 from routes.trading import manual_trade
 
 
@@ -31,6 +33,18 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as raised:
             await manual_trade(None)
         self.assertEqual(raised.exception.status_code, 423)
+
+    async def test_ai_provider_does_not_return_synthetic_analysis(self):
+        with patch.dict(os.environ, {"FEATHERLESS_API_KEY": ""}):
+            agent = FeatherlessAgent()
+            with self.assertRaisesRegex(RuntimeError, "not configured"):
+                await agent.chat("meta-llama/test", "system", "user")
+
+    async def test_transcription_does_not_return_mock_text(self):
+        with patch.dict(os.environ, {"SPEECHMATICS_API_KEY": ""}):
+            agent = SpeechmaticsAgent()
+            with self.assertRaisesRegex(RuntimeError, "not configured"):
+                await agent.transcribe("/tmp/nonexistent-audio.wav")
 
 
 if __name__ == "__main__":
