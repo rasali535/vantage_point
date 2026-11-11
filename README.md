@@ -34,10 +34,11 @@ Set secrets in Vercel project environment settings, not in source files.
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only permissions are verified |
 | `TRADING_PAIR` | Kraken market pair to analyse; defaults to `BTC/USD` |
-| `MODEL_API_KEY` | Meta Model API bearer key; create it in the Meta Model API dashboard |\n| `META_MODEL_API_BASE_URL` | Optional Meta API base URL; defaults to `https://api.meta.ai/v1` |
+| `MODEL_API_KEY` | Meta Model API bearer key; create it in the Meta Model API dashboard |
+| `META_MODEL_API_BASE_URL` | Optional Meta API base URL; defaults to `https://api.meta.ai/v1` |
 | `RESEARCH_MODEL` | Market intelligence model; defaults to Meta `muse-spark-1.3` |
-| `RISK_MODEL` | Risk analysis model; defaults to Meta Llama 3.3 70B |
-| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta Llama 3.3 70B |
+| `RISK_MODEL` | Risk analysis model; defaults to Meta `muse-spark-1.3` |
+| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta `muse-spark-1.3` |
 | `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
 | `RISK_MAX_TRADE_RISK_PCT` | Operator-defined maximum stop-loss risk per proposed trade |
 | `RISK_MAX_DAILY_LOSS_PCT` | Operator-defined daily loss ceiling |
@@ -54,7 +55,11 @@ The backend uses the native PyMongo asynchronous client, reused within the ASGI 
 
 The default database name remains `action_pilot` to preserve the existing collection namespace. The trading routes use the existing `trading_ledger`, `boardroom_history`, and `audit_logs` collections.
 
-## Meta AI provider\n\nAll AI chat, market research, risk analysis, strategy synthesis and meeting-note analysis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.\n\n## Kraken adapter
+## Meta AI provider
+
+All AI chat, market research, risk analysis, strategy synthesis and meeting-note analysis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.
+
+## Kraken adapter
 
 Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private `Balance` requests use server-side API signing but remain disabled by default until credentials are rotated and the API key's read-only permissions are verified. The adapter no longer depends on the Kraken CLI or a Docker-installed binary.
 
