@@ -3,6 +3,7 @@
 Uses Meta's OpenAI-compatible Chat Completions endpoint. The API key is
 server-side only and is never exposed to the frontend.
 """
+import hashlib
 import logging
 import os
 
@@ -20,6 +21,22 @@ class MetaAIClient:
     def __init__(self):
         self.api_key = os.getenv("MODEL_API_KEY")
         self.base_url = os.getenv("META_MODEL_API_BASE_URL", "https://api.meta.ai/v1").rstrip("/")
+
+        # A short one-way fingerprint lets operators compare the key loaded by
+        # this process with their local key without ever logging the secret.
+        key_fingerprint = (
+            hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()[:16]
+            if self.api_key
+            else "missing"
+        )
+        logger.info(
+            "meta_model_api_runtime_config key_configured=%s key_fingerprint=%s "
+            "base_url=%s default_model=%s",
+            bool(self.api_key),
+            key_fingerprint,
+            self.base_url,
+            DEFAULT_META_MODEL,
+        )
 
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
         if not self.api_key:
