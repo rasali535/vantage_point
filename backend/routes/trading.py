@@ -61,6 +61,8 @@ async def get_trading_status():
     return {
         "mode": "analysis_only",
         "execution_enabled": False,
+        "paper_trading_available": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true" and bool(os.getenv("PAPER_API_TOKEN")) and bool(os.getenv("PAPER_INITIAL_BALANCE_USD")),
+        "live_execution_enabled": False,
         "risk_policy_status": "configured" if risk_policy_configured else "not_configured",
         "exchange_status": "public_market_data_only",
         "account_status": account_status,
