@@ -142,6 +142,17 @@ class MetaAIClient:
             DEFAULT_META_MODEL,
         )
 
+    def _refresh_credentials(self) -> None:
+        """Re-read env-derived config so a key added after import takes effect.
+
+        The module-level ``meta_ai`` singleton is created at import time; without
+        this refresh, a ``MODEL_API_KEY`` set after the first import would never
+        be picked up until a process restart.
+        """
+        raw_key = os.getenv("MODEL_API_KEY")
+        self.api_key = raw_key.strip() if raw_key and raw_key.strip() else None
+        self.base_url = normalize_meta_base_url(os.getenv("META_MODEL_API_BASE_URL"))
+
     def _headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
@@ -176,6 +187,7 @@ class MetaAIClient:
 
     async def discover_models(self, force_refresh: bool = False) -> List[str]:
         """Discover and cache available models from Meta API in a concurrency-safe manner."""
+        self._refresh_credentials()
         if not self.api_key:
             raise MetaAIConfigError("MODEL_API_KEY is not configured.")
 
@@ -244,6 +256,7 @@ class MetaAIClient:
 
     async def chat(self, model: str, system_prompt: str, user_prompt: str) -> str:
         """Call Meta's OpenAI-compatible Chat Completions endpoint."""
+        self._refresh_credentials()
         if not self.api_key:
             raise MetaAIConfigError("MODEL_API_KEY is not configured.")
 
@@ -269,7 +282,7 @@ class MetaAIClient:
         payload = {
             "model": selected_model,
             "messages": [
-                {"role": "developer", "content": system_prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             "max_completion_tokens": 1200,
@@ -368,6 +381,7 @@ class MetaAIClient:
 
     async def check_readiness(self) -> Dict[str, Any]:
         """Report operational readiness of Meta Model API without exposing secrets."""
+        self._refresh_credentials()
         key_fp = (
             hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()[:16]
             if self.api_key

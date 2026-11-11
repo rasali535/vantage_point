@@ -5,9 +5,9 @@ The frontend is a Vite/React static site. GitHub Actions builds it with Node.js 
 ## Architecture
 
 - Hostinger serves the compiled static frontend from the domain's document root.
-- Vercel continues to host the FastAPI backend at `https://actionpilot.vercel.app`.
+- Render hosts the FastAPI backend at `https://ras-ali-ai-trader-api.onrender.com`.
 - MongoDB Atlas remains the application database.
-- The build sets the public `VITE_API_URL` to the Vercel API origin. No backend credentials are included in the frontend build.
+- The build sets the public `VITE_API_URL` to the Render API origin. No backend credentials are included in the frontend build.
 
 ## GitHub Actions secrets
 
@@ -47,10 +47,10 @@ This is a static deployment. The Hostinger site should serve files from the same
 
 ## API CORS
 
-The Vercel backend's `CORS_ORIGINS` environment variable must include the exact Hostinger site origin, for example:
+The Render backend's `CORS_ORIGINS` environment variable must include the exact Hostinger site origin, for example:
 
 ```text
 https://darkblue-turkey-867661.hostingersite.com
 ```
 
-Keep any other origins already required by the application. Redeploy the Vercel backend after changing its environment variable.
+Keep any other origins already required by the application. Redeploy the Render backend after changing its environment variable.

@@ -285,6 +285,65 @@ class MetaAIClientExecutionTests(unittest.IsolatedAsyncioTestCase):
             # Ensure key itself is NOT in status dictionary
             self.assertNotIn(self.test_key, str(status))
 
+    async def test_chat_uses_system_role_for_compatibility(self):
+        client = MetaAIClient()
+        models_resp = httpx.Response(
+            status_code=200,
+            json={"object": "list", "data": [{"id": "muse-spark-1.3", "object": "model"}]},
+            request=httpx.Request("GET", f"{client.base_url}/models"),
+        )
+        chat_resp = httpx.Response(
+            status_code=200,
+            json={
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "model": "muse-spark-1.3",
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}],
+            },
+            request=httpx.Request("POST", f"{client.base_url}/chat/completions"),
+        )
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = models_resp
+            mock_post.return_value = chat_resp
+            await client.chat("muse-spark-1.3", "system prompt", "user query")
+            messages = mock_post.call_args[1]["json"]["messages"]
+            self.assertEqual(messages[0]["role"], "system")
+            self.assertEqual(messages[0]["content"], "system prompt")
+            self.assertEqual(messages[1]["role"], "user")
+
+    async def test_client_picks_up_key_configured_after_import(self):
+        with patch.dict(os.environ, {"MODEL_API_KEY": ""}):
+            client = MetaAIClient()
+            self.assertIsNone(client.api_key)
+            # Key is configured after the client was created; the next call
+            # must pick it up without requiring a process restart.
+            with patch.dict(os.environ, {"MODEL_API_KEY": self.test_key}):
+                models_resp = httpx.Response(
+                    status_code=200,
+                    json={"object": "list", "data": [{"id": "muse-spark-1.3", "object": "model"}]},
+                    request=httpx.Request("GET", f"{client.base_url}/models"),
+                )
+                chat_resp = httpx.Response(
+                    status_code=200,
+                    json={
+                        "id": "chatcmpl-123",
+                        "object": "chat.completion",
+                        "model": "muse-spark-1.3",
+                        "choices": [{"message": {"role": "assistant", "content": "OK"}}],
+                    },
+                    request=httpx.Request("POST", f"{client.base_url}/chat/completions"),
+                )
+                with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+                     patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                    mock_get.return_value = models_resp
+                    mock_post.return_value = chat_resp
+                    result = await client.chat("muse-spark-1.3", "system", "user")
+                    self.assertEqual(result, "OK")
+                    headers = mock_post.call_args[1]["headers"]
+                    self.assertEqual(headers["Authorization"], f"Bearer {self.test_key}")
+
 
 if __name__ == "__main__":
     unittest.main()
+
