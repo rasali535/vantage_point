@@ -30,18 +30,22 @@ async def mongodb_unavailable_handler(request, exc):
         content={"detail": "MongoDB is temporarily unavailable. No trading action was executed."},
     )
 
-# Explicit origins only. Add production and preview frontend origins through
-# CORS_ORIGINS (comma-separated) in the deployment environment.
+# Explicit origins only. Keep the production Hostinger frontend in the
+# built-in allowlist so a missing or incomplete Vercel CORS_ORIGINS value
+# cannot silently break the deployed dashboard. Additional trusted origins
+# can be supplied as a comma-separated CORS_ORIGINS environment variable.
 _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://actionpilot.vercel.app",
+    "https://darkblue-turkey-867661.hostingersite.com",
 ]
-allowed_origins = [
-    origin.strip()
-    for origin in os.getenv("CORS_ORIGINS", ",".join(_default_origins)).split(",")
+_configured_origins = os.getenv("CORS_ORIGINS", "").split(",")
+allowed_origins = list(dict.fromkeys(
+    origin.strip().rstrip("/")
+    for origin in [*_default_origins, *_configured_origins]
     if origin.strip()
-]
+))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
