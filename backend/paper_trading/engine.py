@@ -82,6 +82,7 @@ def simulate_order(
     reference_price: Any,
     idempotency_key: str,
     stop_loss_price: Any = None,
+    take_profit_price: Any = None,
     risk_engine: DeterministicRiskEngine | None = None,
     portfolio_prices: dict[str, Any] | None = None,
 ) -> tuple[dict, dict]:
@@ -145,8 +146,13 @@ def simulate_order(
         ))
         if not risk.get("approved"):
             raise PaperTradeError("Risk gate rejected paper BUY: " + "; ".join(risk.get("reasons", [])))
+        target = dec(take_profit_price, "take_profit_price") if take_profit_price is not None else None
         if stop is not None and stop >= fill_price:
             raise PaperTradeError("BUY stop-loss must be below the simulated fill price.")
+        if target is not None and target <= fill_price:
+            raise PaperTradeError("BUY take-profit must be above the simulated fill price.")
+        if stop is not None and target is not None and stop >= target:
+            raise PaperTradeError("Stop-loss must be below take-profit.")
         old_qty = dec(position["quantity"], "position quantity") if position else D("0")
         old_cost = dec(position["average_entry"], "average_entry") * old_qty if position else D("0")
         new_qty = old_qty + qty
@@ -155,6 +161,7 @@ def simulate_order(
             "quantity": str(_quantize(new_qty, QTY_STEP)),
             "average_entry": str(_quantize(avg, D("0.00000001"))),
             "stop_loss": str(stop) if stop is not None else (position or {}).get("stop_loss"),
+            "take_profit": str(target) if target is not None else (position or {}).get("take_profit"),
             "opened_at": (position or {}).get("opened_at"),
         }
         updated["cash"] = str(_quantize(now_cash - total, MONEY_STEP))
@@ -220,3 +227,41 @@ def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict
         "execution_enabled": False,
         "exchange_order_submitted": False,
     }
+
+
+
+def evaluate_protective_triggers(
+    account: dict,
+    prices: dict[str, Any],
+) -> tuple[dict, list[dict]]:
+    """Simulate full-position exits when a public mark crosses a stored stop/target."""
+    updated = deepcopy(account)
+    triggered = []
+    for pair, position in list(updated.get("positions", {}).items()):
+        if pair not in prices:
+            continue
+        mark = dec(prices[pair], f"{pair} market price")
+        if mark <= 0:
+            continue
+        stop = dec(position["stop_loss"], "stop_loss") if position.get("stop_loss") is not None else None
+        target = dec(position["take_profit"], "take_profit") if position.get("take_profit") is not None else None
+        reason = "stop_loss" if stop is not None and mark <= stop else (
+            "take_profit" if target is not None and mark >= target else None
+        )
+        if reason is None:
+            continue
+        key = f"protective:{pair}:{reason}:{position.get('opened_at') or position.get('quantity')}"
+        updated, fill = simulate_order(
+            updated,
+            pair=pair,
+            side="SELL",
+            quantity=position["quantity"],
+            reference_price=mark,
+            idempotency_key=key,
+        )
+        fill["triggered_by"] = reason
+        fill["trigger_price"] = str(stop if reason == "stop_loss" else target)
+        # Replace the just-created order with the enriched protective-trigger record.
+        updated["orders"][-1] = {k: v for k, v in fill.items() if k != "duplicate"}
+        triggered.append(fill)
+    return updated, triggered
