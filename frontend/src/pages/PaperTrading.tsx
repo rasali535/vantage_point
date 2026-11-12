@@ -171,86 +171,83 @@ const PaperTrading: React.FC = () => {
     }
   };
 
+  const pnlValue = Number(account?.realized_pnl || 0);
+  const stats = [
+    { label: 'Portfolio equity', value: account ? money(account.equity) : '—', sub: account ? `${account.order_count} simulated fills` : 'Connect to load', main: true, tone: '' },
+    { label: 'Virtual cash', value: account ? money(account.cash) : '—', sub: account?.currency || 'USD', main: false, tone: '' },
+    { label: 'Open positions value', value: account ? money(account.market_value) : '—', sub: account ? `${account.positions.length} open` : '—', main: false, tone: '' },
+    { label: 'Realized P&L', value: account ? money(account.realized_pnl) : '—', sub: 'Closed virtual trades', main: false, tone: !account ? '' : pnlValue >= 0 ? 'pb-pos' : 'pb-neg' },
+  ];
+
   return (
-    <div className="animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+    <div className="animate-fade-in paper-board">
+      <div className="pb-topbar">
         <div>
-          <h1>Paper Trading</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Real Kraken public prices · Virtual USD funds · No live orders</p>
+          <div className="pb-title"><Activity size={22} /> Paper Trading</div>
+          <div className="pb-sub">Real Kraken public prices · Virtual USD funds · No live orders</div>
         </div>
-        <span className="badge badge-success"><ShieldCheck size={14} style={{ display: 'inline', marginRight: 5 }} /> Simulation only</span>
+        <span className="pb-live"><i />SIMULATION</span>
       </div>
 
-      <div className="glass card" style={{ marginBottom: '1.5rem' }}>
-        <label htmlFor="paper-token" style={{ display: 'block', marginBottom: 8, color: 'var(--text-muted)' }}>Paper access token</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" style={{ flex: 1, minWidth: 220, padding: 12, borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-          <button className="btn btn-primary" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
+      <div className="pb-panel" style={{ marginBottom: 12 }}>
+        <label className="pb-label" htmlFor="paper-token">Paper access token</label>
+        <div className="pb-tokenrow">
+          <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" className="pb-input" style={{ flex: 1, minWidth: 220 }} />
+          <button className="pb-btn" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
         </div>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>The token stays in this page's memory and is not saved to browser storage.</p>
+        <div className="pb-muted" style={{ marginTop: 8 }}>The token stays in this page's memory and is not saved to browser storage.</div>
       </div>
 
-      {error && <div className="glass card" role="alert" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>{error}</div>}
-      {message && <div className="glass card" role="status" style={{ borderColor: 'var(--success)' }}>{message}</div>}
+      {error && <div className="pb-alert pb-alert-error" role="alert">{error}</div>}
+      {message && <div className="pb-alert pb-alert-ok" role="status">{message}</div>}
 
-      <div className="grid">
-        {[
-          ['Portfolio equity', account ? money(account.equity) : '—'],
-          ['Virtual cash', account ? money(account.cash) : '—'],
-          ['Open positions value', account ? money(account.market_value) : '—'],
-          ['Realized P&L', account ? money(account.realized_pnl) : '—'],
-        ].map(([label, value]) => (
-          <div className="glass card" key={label}>
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{label}</div>
-            <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8 }}>{value}</div>
+      <div className="pb-hero">
+        {stats.map(stat => (
+          <div className={`pb-stat${stat.main ? ' pb-stat-main' : ''}`} key={stat.label}>
+            <div className="k">{stat.label}</div>
+            <div className={`v ${stat.tone}`}>{stat.value}</div>
+            <div className="s">{stat.sub}</div>
           </div>
         ))}
       </div>
 
-      <div className="glass card" style={{ marginTop: 16, marginBottom: 16 }}>
+      <div className="pb-section-title"><Bot size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Autonomous paper trader</div>
+      <div className="pb-panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Bot size={20} /> Autonomous paper trader</h2>
-            <p style={{ color: 'var(--text-muted)', marginTop: 6 }}>
-              Automatically analyses configured markets, opens risk-sized virtual positions, closes on confirmed reversal signals, and monitors stop-loss/take-profit exits.
-            </p>
-          </div>
-          <span className={autopilot?.enabled ? 'badge badge-success' : 'badge'}>
+          <span className={`pb-pill${autopilot?.enabled ? ' pb-pill-on' : ''}`}>
             {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
           </span>
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
-          <button className={autopilot?.enabled ? 'btn' : 'btn btn-primary'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
+          <button className={autopilot?.enabled ? 'pb-btn pb-btn-ghost' : 'pb-btn'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
             {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
           </button>
-          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
-          </span>
         </div>
-        {autopilot && !autopilot.worker_running && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 10 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</p>}
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
+        <div className="pb-muted" style={{ marginTop: 10 }}>
+          {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+        </div>
+        {autopilot && !autopilot.worker_running && <div className="pb-alert pb-alert-error" style={{ marginTop: 10, marginBottom: 0 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</div>}
+        <div className="pb-muted" style={{ marginTop: 10 }}>
           Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
-        </p>
+        </div>
       </div>
 
-      <div className="glass card" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginBottom: 12 }}>Autonomous analysis history</h2>
-        {!autopilotRuns.length ? <p style={{ color: 'var(--text-muted)' }}>No autonomous analysis cycles recorded yet.</p> : (
-          <div style={{ display: 'grid', gap: 12 }}>
+      <div className="pb-section-title">Autonomous analysis history</div>
+      <div className="pb-panel">
+        {!autopilotRuns.length ? <span className="pb-muted">No autonomous analysis cycles recorded yet.</span> : (
+          <div>
             {autopilotRuns.slice(0, 5).map((run, index) => (
-              <div key={`${run.timestamp}-${index}`} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+              <div key={`${run.timestamp}-${index}`} className="pb-run">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                   <strong>{new Date(run.timestamp).toLocaleString()}</strong>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{run.status}</span>
+                  <span className="pb-muted" style={{ fontSize: 12 }}>{run.status}</span>
                 </div>
                 {run.results?.map((item, itemIndex) => (
-                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6, fontSize: 13 }}>
+                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                     <span>{item.pair} · {item.decision}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
+                    <span className="pb-muted">{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
                   </div>
                 ))}
                 {run.protective_exits?.map((item, itemIndex) => (
-                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6, fontSize: 13 }}>
+                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6 }}>
                     Protective exit: {item.pair} · {item.triggered_by || 'triggered'} · {item.fill_price || ''}
                   </div>
                 ))}
@@ -260,73 +257,67 @@ const PaperTrading: React.FC = () => {
         )}
       </div>
 
-      <div className="grid" style={{ marginTop: 8, alignItems: 'start' }}>
-        <form className="glass card" onSubmit={submitOrder}>
-          <h2 style={{ marginBottom: 16 }}>Simulate spot order</h2>
-          <label style={{ display: 'block', color: 'var(--text-muted)', marginBottom: 6 }}>Pair</label>
-          <input value={pair} onChange={e => setPair(e.target.value.toUpperCase())} required pattern="[A-Z0-9]+/USD" title="Use a USD-quoted pair such as BTC/USD" style={fieldStyle} />
-          <label style={{ display: 'block', color: 'var(--text-muted)', marginBottom: 6 }}>Side</label>
-          <select value={side} onChange={e => setSide(e.target.value as 'BUY' | 'SELL')} style={fieldStyle}>
+      <div className="pb-split" style={{ marginTop: 12 }}>
+        <form className="pb-panel" onSubmit={submitOrder}>
+          <div className="pb-section-title" style={{ marginTop: 0 }}>Simulate spot order</div>
+          <label className="pb-label">Pair</label>
+          <input value={pair} onChange={e => setPair(e.target.value.toUpperCase())} required pattern="[A-Z0-9]+/USD" title="Use a USD-quoted pair such as BTC/USD" className="pb-input" style={{ marginBottom: 12 }} />
+          <label className="pb-label">Side</label>
+          <select value={side} onChange={e => setSide(e.target.value as 'BUY' | 'SELL')} className="pb-select" style={{ marginBottom: 12 }}>
             <option value="BUY">BUY</option><option value="SELL">SELL</option>
           </select>
-          <label style={{ display: 'block', color: 'var(--text-muted)', marginBottom: 6 }}>Quantity</label>
-          <input value={quantity} onChange={e => setQuantity(e.target.value)} required inputMode="decimal" style={fieldStyle} />
+          <label className="pb-label">Quantity</label>
+          <input value={quantity} onChange={e => setQuantity(e.target.value)} required inputMode="decimal" className="pb-input" style={{ marginBottom: 12 }} />
           {side === 'BUY' && <>
-            <label style={{ display: 'block', color: 'var(--text-muted)', marginBottom: 6 }}>Stop-loss price (required by risk policy)</label>
-            <input value={stopLoss} onChange={e => setStopLoss(e.target.value)} inputMode="decimal" placeholder="e.g. 64000" style={fieldStyle} />
-            <label style={{ display: 'block', color: 'var(--text-muted)', marginBottom: 6 }}>Take-profit price (optional)</label>
-            <input value={takeProfit} onChange={e => setTakeProfit(e.target.value)} inputMode="decimal" placeholder="e.g. 70000" style={fieldStyle} />
+            <label className="pb-label">Stop-loss price (required by risk policy)</label>
+            <input value={stopLoss} onChange={e => setStopLoss(e.target.value)} inputMode="decimal" placeholder="e.g. 64000" className="pb-input" style={{ marginBottom: 12 }} />
+            <label className="pb-label">Take-profit price (optional)</label>
+            <input value={takeProfit} onChange={e => setTakeProfit(e.target.value)} inputMode="decimal" placeholder="e.g. 70000" className="pb-input" style={{ marginBottom: 12 }} />
           </>}
-          <button className="btn btn-primary" type="submit" disabled={busy || !token.trim()} style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
+          <button className={`pb-btn ${side === 'BUY' ? 'pb-btn-buy' : 'pb-btn-sell'}`} type="submit" disabled={busy || !token.trim()} style={{ width: '100%', marginTop: 4 }}>
             {side === 'BUY' ? <TrendingUp size={16} /> : <TrendingDown size={16} />} Simulate {side}
           </button>
         </form>
 
-        <div className="glass card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <h2>Open positions</h2>
-            <button className="btn" onClick={monitor} disabled={busy || !token.trim()}><Activity size={16} /> Check exits</button>
+        <div className="pb-panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div className="pb-section-title" style={{ margin: 0 }}>Open positions</div>
+            <button className="pb-btn pb-btn-ghost" onClick={monitor} disabled={busy || !token.trim()}><Activity size={16} /> Check exits</button>
           </div>
-          {!account?.positions?.length ? <p style={{ color: 'var(--text-muted)' }}>No open virtual positions.</p> : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead><tr><th style={cellStyle}>Asset</th><th style={cellStyle}>Qty</th><th style={cellStyle}>Avg entry</th><th style={cellStyle}>Mark</th><th style={cellStyle}>Stop / target</th></tr></thead>
+          {!account?.positions?.length ? <span className="pb-muted">No open virtual positions.</span> : (
+            <div className="pb-tablewrap">
+              <table className="pb-table">
+                <thead><tr><th>Asset</th><th>Qty</th><th>Avg entry</th><th>Mark</th><th>Stop / target</th></tr></thead>
                 <tbody>{account.positions.map(position => (
                   <tr key={position.pair}>
-                    <td style={cellStyle}>{position.pair}</td><td style={cellStyle}>{position.quantity}</td>
-                    <td style={cellStyle}>{money(position.average_entry)}</td><td style={cellStyle}>{money(position.mark_price)}</td>
-                    <td style={cellStyle}>{position.stop_loss ? money(position.stop_loss) : '—'} / {position.take_profit ? money(position.take_profit) : '—'}</td>
+                    <td>{position.pair}</td><td>{position.quantity}</td>
+                    <td>{money(position.average_entry)}</td><td>{money(position.mark_price)}</td>
+                    <td>{position.stop_loss ? money(position.stop_loss) : '—'} / {position.take_profit ? money(position.take_profit) : '—'}</td>
                   </tr>
                 ))}</tbody>
               </table>
             </div>
           )}
-          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>Protective checks run when you press Check exits. This is not a continuously running background service.</p>
+          <div className="pb-muted" style={{ marginTop: 12 }}>Protective checks run when you press Check exits. This is not a continuously running background service.</div>
         </div>
       </div>
 
-      <div className="glass card" style={{ marginTop: 16 }}>
-        <h2 style={{ marginBottom: 12 }}>Recent simulated fills</h2>
-        {!orders.length ? <p style={{ color: 'var(--text-muted)' }}>No paper fills recorded yet.</p> : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead><tr><th style={cellStyle}>Time</th><th style={cellStyle}>Pair</th><th style={cellStyle}>Side</th><th style={cellStyle}>Qty</th><th style={cellStyle}>Fill price</th><th style={cellStyle}>Fee</th><th style={cellStyle}>Mode</th></tr></thead>
-              <tbody>{orders.map((order: any) => (
-                <tr key={order.idempotency_key}><td style={cellStyle}>{new Date(order.timestamp).toLocaleString()}</td><td style={cellStyle}>{order.pair}</td><td style={cellStyle}>{order.side}</td><td style={cellStyle}>{order.quantity}</td><td style={cellStyle}>{money(order.fill_price)}</td><td style={cellStyle}>{money(order.fee_usd)}</td><td style={cellStyle}>PAPER</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
+      <div className="pb-section-title">Recent simulated fills</div>
+      <div className="pb-panel pb-tablewrap">
+        {!orders.length ? <span className="pb-muted">No paper fills recorded yet.</span> : (
+          <table className="pb-table">
+            <thead><tr><th>Time</th><th>Pair</th><th>Side</th><th>Qty</th><th>Fill price</th><th>Fee</th><th>Mode</th></tr></thead>
+            <tbody>{orders.map((order: any) => (
+              <tr key={order.idempotency_key}><td>{new Date(order.timestamp).toLocaleString()}</td><td>{order.pair}</td><td className={order.side === 'BUY' ? 'pb-up' : 'pb-neg'} style={{ fontWeight: 700 }}>{order.side}</td><td>{order.quantity}</td><td>{money(order.fill_price)}</td><td>{money(order.fee_usd)}</td><td><span className="pb-mode">PAPER</span></td></tr>
+            ))}</tbody>
+          </table>
         )}
       </div>
-      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>Live execution is disabled. Every fill is simulated; no Kraken private trading endpoint is called.</p>
+      <div className="pb-muted" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <ShieldCheck size={14} /> Live execution is disabled. Every fill is simulated; no Kraken private trading endpoint is called.
+      </div>
     </div>
   );
 };
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%', padding: 11, marginBottom: 14, borderRadius: 8,
-  background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)',
-};
-const cellStyle: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid var(--border)', fontSize: 13 };
 
 export default PaperTrading;
