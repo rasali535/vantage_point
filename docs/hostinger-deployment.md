@@ -5,7 +5,7 @@ The frontend is a Vite/React static site. GitHub Actions builds it with Node.js 
 ## Architecture
 
 - Hostinger serves the compiled static frontend from the domain's document root.
-- Render hosts the FastAPI backend at `https://ras-ali-ai-trader-api.onrender.com`.
+- Render hosts the FastAPI backend at `https://vantage-point-1qv7.onrender.com` (Virginia; Frankfurt and Oregon egress is rejected by the Meta Model API).
 - MongoDB Atlas remains the application database.
 - The build sets the public `VITE_API_URL` to the Render API origin. No backend credentials are included in the frontend build.
 
