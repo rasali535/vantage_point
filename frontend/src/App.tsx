@@ -1,109 +1,112 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  History, 
-  Activity,
-  AlertCircle,
-  TrendingUp,
-  RefreshCcw,
-  Users
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { RefreshCcw } from 'lucide-react';
 
 import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
 import ChatBot from './components/ChatBot';
 import { API_BASE_URL } from './config';
 import PaperTrading from './pages/PaperTrading';
+import MirofishTerminal from './components/MirofishTerminal';
 
-const Boardroom = () => {
-  const [deliberations, setDeliberations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+const MAJOR_PAIRS = [
+  'BTC/USD',
+  'ETH/USD',
+  'SOL/USD',
+  'XRP/USD',
+  'ADA/USD',
+  'DOGE/USD',
+  'LTC/USD',
+  'LINK/USD',
+  'DOT/USD',
+  'BCH/USD',
+];
 
-  useEffect(() => {
-    fetchBoardroom();
-  }, []);
-
-  const fetchBoardroom = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/trading/boardroom`);
-      if (!res.ok) throw new Error("Boardroom history is unavailable.");
-      const data = await res.json();
-      setDeliberations(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]; loading: boolean; onRefresh: () => void }) => {
   return (
     <div className="animate-fade-in">
-      <h2 style={{ marginBottom: '1.5rem' }}>The Boardroom <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Live Deliberation)</span></h2>
-      
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '2rem' }}>
-        {[
-          { name: 'Market Intelligence', status: 'Meta AI · verified market context', color: 'var(--primary)' },
-          { name: 'Technical Analyst', status: 'EMA · RSI · ATR calculations', color: 'var(--success)' },
-          { name: 'Strategy', status: 'Meta AI · BUY / SELL / HOLD proposal', color: 'var(--primary)' },
-          { name: 'Risk Manager', status: 'Meta AI advisory · deterministic limits', color: 'var(--danger)' },
-          { name: 'Execution', status: 'Risk preflight · order submission locked', color: 'var(--vantage-gold)' },
-          { name: 'Performance', status: 'Confirmed closed trades only', color: 'var(--success)' }
-        ].map((agent) => (
-          <div key={agent.name} className="glass card" style={{ padding: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: agent.color, flexShrink: 0 }}></span>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{agent.name}</div>
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{agent.status}</div>
+      <div className="mf-card" style={{ marginBottom: '12px' }}>
+        <div className="mf-section-bar" style={{ marginBottom: '14px' }}>
+          <div className="mf-section-title-left">
+            <span className="mf-dot mf-dot-terra" />
+            <span className="mf-card-heading">SIX-AGENT BOARDROOM · LIVE DELIBERATION LEDGER</span>
           </div>
-        ))}
+          <button type="button" className="mf-pill-action" onClick={onRefresh}>
+            <RefreshCcw size={12} style={{ marginRight: 5 }} /> REFRESH
+          </button>
+        </div>
+
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '10px' }}>
+          {[
+            { name: 'Market Intelligence', status: 'Meta AI · verified market context', color: '#2563eb' },
+            { name: 'Technical Analyst', status: 'EMA · RSI · ATR calculations', color: '#10b981' },
+            { name: 'Strategy', status: 'Meta AI · BUY / SELL / HOLD proposal', color: '#2563eb' },
+            { name: 'Risk Manager', status: 'Meta AI advisory · deterministic limits', color: '#9a3412' },
+            { name: 'Execution', status: 'Risk preflight · order submission locked', color: '#b45309' },
+            { name: 'Performance', status: 'Confirmed closed trades only', color: '#10b981' },
+          ].map((agent) => (
+            <div key={agent.name} className="mf-subcard">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: agent.color, flexShrink: 0 }} />
+                <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{agent.name}</div>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{agent.status}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {deliberations.length === 0 && !loading && (
-          <div className="glass card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No six-agent analysis cycles have been recorded yet. Run a market scan to start the boardroom.
+          <div className="mf-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
+            No six-agent analysis cycles have been recorded yet. Use the pair scanner in the top bar to start the boardroom.
           </div>
         )}
-        {deliberations.map((d: any, idx) => {
+        {deliberations.map((d: any, idx: number) => {
           const strategy = d.strategy || {};
           const technical = d.technical_analysis || {};
           const risk = d.risk_assessment || {};
           const execution = d.execution_assessment || {};
           const performance = d.performance_context || {};
-          const action = strategy.action || d.action || 'HOLD';
+          const action = String(strategy.action || d.action || 'HOLD').toUpperCase();
           const reasoning = strategy.rationale || d.reasoning || 'No reasoning provided.';
-          const actionColor = action === 'BUY' ? 'var(--success)' : action === 'SELL' ? 'var(--danger)' : 'var(--vantage-gold)';
+          const actionColor = action === 'BUY' ? '#2563eb' : action === 'SELL' ? '#9a3412' : '#b45309';
           return (
-            <div key={idx} className="glass card" style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1rem' }}>{d.pair || d.symbol || 'N/A'}</span>
-                  <span style={{
-                    background: actionColor,
-                    color: '#fff',
-                    fontWeight: 800,
-                    fontSize: '0.75rem',
-                    padding: '0.2rem 0.75rem',
-                    borderRadius: '999px',
-                    letterSpacing: '0.05em'
-                  }}>{action}</span>
+            <div key={idx} className="mf-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontWeight: 800, color: '#111827', fontSize: '0.95rem', fontFamily: 'var(--font-mono)' }}>{d.pair || d.symbol || 'N/A'}</span>
+                  <span
+                    style={{
+                      background: actionColor,
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: '0.7rem',
+                      padding: '0.2rem 0.65rem',
+                      borderRadius: '999px',
+                      letterSpacing: '0.06em',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {action}
+                  </span>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(d.timestamp).toLocaleString()}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {d.timestamp ? new Date(d.timestamp).toLocaleString() : '—'}
+                </div>
               </div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--text)', lineHeight: 1.7, marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.86rem', color: 'var(--text)', lineHeight: 1.65, marginBottom: '1rem' }}>
                 {reasoning}
               </div>
-              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', fontSize: '0.8rem' }}>
-                <div><span style={{ color: 'var(--text-muted)' }}>Technical trend</span><br /><strong>{technical.trend || 'Unavailable'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>RSI 14</span><br /><strong>{typeof technical.rsi_14 === 'number' ? technical.rsi_14.toFixed(1) : '—'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Risk assessment</span><br /><strong>{risk.summary || 'Not available'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Execution gate</span><br /><strong>{execution.status || 'Not evaluated'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Performance sample</span><br /><strong>{performance.sample_size ?? 0} confirmed trades</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Execution</span><br /><strong style={{ color: 'var(--warning)' }}>Disabled · research only</strong></div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.65rem', fontSize: '0.76rem', fontFamily: 'var(--font-mono)' }}>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>TECHNICAL TREND</span><br /><strong>{technical.trend || 'Unavailable'}</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>RSI 14</span><br /><strong>{typeof technical.rsi_14 === 'number' ? technical.rsi_14.toFixed(1) : '—'}</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>RISK ASSESSMENT</span><br /><strong>{risk.summary || 'Not available'}</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>EXECUTION GATE</span><br /><strong>{execution.status || 'Not evaluated'}</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>PERF SAMPLE</span><br /><strong>{performance.sample_size ?? 0} confirmed trades</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>EXECUTION</span><br /><strong style={{ color: '#9a3412' }}>Disabled · research only</strong></div>
               </div>
-              <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Strategy confidence: {typeof strategy.confidence === 'number' ? `${(strategy.confidence * 100).toFixed(0)}%` : '—'}
+              <div style={{ marginTop: '0.65rem', fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                STRATEGY CONFIDENCE: {typeof strategy.confidence === 'number' ? `${(strategy.confidence * 100).toFixed(0)}%` : '—'}
               </div>
             </div>
           );
@@ -112,198 +115,249 @@ const Boardroom = () => {
     </div>
   );
 };
-const Dashboard = ({ onSelectBoardroom, status, onRefresh }: any) => {
-  const history = Array.isArray(status?.history) ? status.history : [];
-  const balance = status?.balance?.USD;
-  const exchangeConnected = status?.exchange_status === "connected";
-  const completedOrders = history.filter((item: any) => ["buy", "sell"].includes(String(item.side).toLowerCase()));
-
-  return (
-    <div className="animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Ras Ali AI Trader</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Kraken spot market intelligence · Paper-first research · Controlled execution</p>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="glass btn" onClick={onRefresh} style={{ border: '1px solid var(--primary)' }}>
-            <RefreshCcw size={18} style={{ marginRight: '0.5rem' }} /> Refresh
-          </button>
-        </div>
-      </div>
-
-      <div className="grid">
-        <div className="glass card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <AlertCircle color="var(--warning)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Execution Mode</h3>
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800 }}>LOCKED</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Analysis only. No orders can be submitted.</div>
-          <div style={{ color: 'var(--warning)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-            Risk policy: {status?.risk_policy_status === 'configured' ? 'configured' : 'not configured'}
-          </div>
-        </div>
-
-        <div className="glass card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <Activity color="var(--primary)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Kraken Connection</h3>
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{exchangeConnected ? 'CONNECTED' : 'NOT VERIFIED'}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Market data and account access are reported separately.</div>
-        </div>
-
-        <div className="glass card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <TrendingUp color="var(--success)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Account Balance</h3>
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{typeof balance === 'number' ? `$${balance.toLocaleString()}` : 'Unavailable'}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No estimated or simulated balances are displayed.</div>
-        </div>
-
-        <div className="glass card" style={{ cursor: 'pointer', border: '1px solid rgba(36, 86, 230, 0.35)' }} onClick={onSelectBoardroom}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <Users color="var(--primary)" />
-            <h3 style={{ color: 'var(--text-muted)' }}>Boardroom Intelligence</h3>
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800 }}>{history.length}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Recorded ledger events · Open analysis history</div>
-        </div>
-      </div>
-
-      <div className="glass card" style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem' }}>
-          <h2>Trade & Decision Ledger</h2>
-          <span className="badge">Read only</span>
-        </div>
-        {history.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', padding: '1.5rem 0' }}>
-            No persisted trading events yet. The ledger will populate when MongoDB is available and verified events are recorded.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '1rem' }}>Asset</th>
-                  <th style={{ padding: '1rem' }}>Side</th>
-                  <th style={{ padding: '1rem' }}>Volume</th>
-                  <th style={{ padding: '1rem' }}>Price</th>
-                  <th style={{ padding: '1rem' }}>Status</th>
-                  <th style={{ padding: '1rem' }}>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.slice(0, 10).map((item: any) => (
-                  <tr key={item.id || item.order_id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '1rem' }}>{item.symbol || item.pair || '—'}</td>
-                    <td style={{ padding: '1rem' }}>{String(item.side || item.action || '—').toUpperCase()}</td>
-                    <td style={{ padding: '1rem' }}>{item.volume ?? '—'}</td>
-                    <td style={{ padding: '1rem' }}>{item.price ?? '—'}</td>
-                    <td style={{ padding: '1rem' }}>{item.status || item.execution_status || 'recorded'}</td>
-                    <td style={{ padding: '1rem' }}>{item.time || item.timestamp || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div style={{ marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-          {completedOrders.length} historical order records · P&amp;L is not shown until it can be calculated from confirmed fills.
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState<'terminal' | 'paper' | 'trading' | 'boardroom' | 'audit'>('terminal');
   const [status, setStatus] = useState<any>(null);
-  const [triggerScanOnLoad, setTriggerScanOnLoad] = useState(false);
+  const [deliberations, setDeliberations] = useState<any[]>([]);
+  const [boardroomLoading, setBoardroomLoading] = useState(true);
+  const [pair, setPair] = useState('BTC/USD');
+  const [scanning, setScanning] = useState(false);
+  const [lastScanDecision, setLastScanDecision] = useState<any>(null);
+  const [scanBanner, setScanBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [utcClock, setUtcClock] = useState('');
 
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 15000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
-
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/trading/status`);
       const data = await res.json();
       if (!res.ok) {
-        setStatus({ balance: null, history: [], pnl_24h: null, active_strategy: 'Unavailable', exchange_status: 'unavailable', error: data.detail || 'Service unavailable' });
+        setStatus({
+          balance: null,
+          history: [],
+          pnl_24h: null,
+          active_strategy: 'Unavailable',
+          exchange_status: 'unavailable',
+          error: data.detail || 'Service unavailable',
+        });
         return;
       }
       setStatus({ ...data, history: Array.isArray(data.history) ? data.history : [] });
     } catch (err) {
       console.error(err);
     }
+  }, []);
+
+  const fetchBoardroom = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/trading/boardroom`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDeliberations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBoardroomLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchStatus();
+    void fetchBoardroom();
+    const interval = window.setInterval(() => {
+      void fetchStatus();
+      void fetchBoardroom();
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [fetchStatus, fetchBoardroom]);
+
+  useEffect(() => {
+    const tick = () => setUtcClock(`${new Date().toISOString().slice(11, 19)} UTC`);
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const handleRunScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    setScanBanner(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/trading/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pair }),
+      });
+      if (!res.ok) {
+        let message = `Server Error (${res.status})`;
+        let requestId = '';
+        try {
+          const payload = await res.json();
+          const detail = payload?.detail;
+          if (typeof detail === 'string') message = detail;
+          else if (detail && typeof detail === 'object') {
+            message = detail.message || message;
+            requestId = detail.request_id || '';
+          }
+        } catch {
+          // Keep status fallback
+        }
+        throw new Error(requestId ? `${message} (Ref: ${requestId})` : message);
+      }
+      const data = await res.json();
+      setLastScanDecision({
+        ...data.decision,
+        pair: data.pair,
+        signal_quality: data.signal_quality_report?.signal_quality_index,
+        whipsaw_risk: data.signal_quality_report?.whipsaw_risk,
+      });
+      setScanBanner({
+        type: 'ok',
+        text: `Six-agent scan completed for ${data.pair}: Proposed ${data.decision?.action || 'HOLD'} (${Math.round((data.decision?.confidence || 0) * 100)}% confidence). Execution remains locked.`,
+      });
+      await Promise.all([fetchStatus(), fetchBoardroom()]);
+    } catch (err: any) {
+      setScanBanner({
+        type: 'err',
+        text: `Market analysis failed. No order was submitted. ${err.message || ''}`,
+      });
+    } finally {
+      setScanning(false);
+    }
   };
 
-  return (
-    <div className="app-container">
-      <ChatBot />
-      <aside className="sidebar">
-        <div style={{ padding: '2rem', fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-1px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', background: 'var(--primary)', borderRadius: '8px' }}></div> Ras Ali Labs
-        </div>
-        <nav className="nav-links">
-          <div 
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('dashboard'); }}
-          >
-            <LayoutDashboard size={20} /> Dashboard
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'paper' ? 'active' : ''}`}
-            onClick={() => setActiveTab('paper')}
-          >
-            <Activity size={20} /> Paper Trading
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'trading' ? 'active' : ''}`}
-            onClick={() => setActiveTab('trading')}
-          >
-            <TrendingUp size={20} /> AI Trader
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'audit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit')}
-          >
-            <History size={20} /> Audit Trail
-          </div>
-          <div 
-            className={`nav-item ${activeTab === 'boardroom' ? 'active' : ''}`}
-            onClick={() => setActiveTab('boardroom')}
-          >
-            <Users size={20} /> Boardroom
-          </div>
-        </nav>
-      </aside>
+  const totalRounds = deliberations.length + (Array.isArray(status?.history) ? status.history.length : 0);
 
-      <main className="main-content">
-        {activeTab === 'dashboard' && (
-          <Dashboard 
-            onSelectBoardroom={() => setActiveTab('boardroom')}
-            status={status}
-            onRefresh={fetchStatus}
-          />
+  return (
+    <div className="mf-shell">
+      <ChatBot />
+
+      <div className="mf-container">
+        {/* ===================================================================
+            TOP HEADER BAR (CLAUDE FABLE 5 · MIROFISH INSPIRED HEADER CARD)
+            =================================================================== */}
+        <header className="mf-card mf-topbar">
+          <div className="mf-brand-left" onClick={() => setActiveTab('terminal')} style={{ cursor: 'pointer' }}>
+            <div className="mf-orbital-logo" aria-hidden="true">
+              <svg viewBox="0 0 38 38" width="38" height="38">
+                <circle cx="19" cy="19" r="17" fill="#f8fafc" stroke="#475569" strokeWidth="1.2" />
+                <circle cx="19" cy="19" r="2.6" fill="#111827" />
+                <circle cx="26" cy="13" r="1.5" fill="#9a3412" />
+                <circle cx="12" cy="24" r="1.2" fill="#2563eb" />
+              </svg>
+            </div>
+            <div>
+              <div className="mf-brand-eyebrow">
+                VANTAGE POINT SIMULATION · RELATIONSHIP-GRAPH INTELLIGENCE
+              </div>
+              <div className="mf-brand-title">
+                MUSE SPARK 1.3 <span className="mf-brand-sep">·</span>{' '}
+                <span className="mf-brand-accent">VANTAGE POINT</span>
+              </div>
+            </div>
+          </div>
+
+          {/* View Switcher Pills */}
+          <nav className="mf-nav-pills" aria-label="Workspace navigation">
+            {[
+              { id: 'terminal', label: 'TERMINAL BOARD' },
+              { id: 'paper', label: 'PAPER DESK' },
+              { id: 'trading', label: 'AI SCANNER' },
+              { id: 'boardroom', label: 'BOARDROOM' },
+              { id: 'audit', label: 'AUDIT TRAIL' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`mf-nav-pill ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id as any)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Right Status & Pair Controls */}
+          <div className="mf-topbar-right">
+            <div className="mf-pair-control">
+              <input
+                list="mf-pair-options"
+                value={pair}
+                onChange={(e) => setPair(e.target.value.toUpperCase())}
+                className="mf-pair-input"
+                aria-label="Active Kraken pair"
+                title="Select or type a Kraken pair (e.g. BTC/USD)"
+              />
+              <datalist id="mf-pair-options">
+                {MAJOR_PAIRS.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </div>
+
+            <span className="mf-status-live">
+              <i /> LIVE · ANALYSIS ONLY
+            </span>
+            <span className="mf-status-round">ROUND #{totalRounds || 1}</span>
+            <span className="mf-status-clock">{utcClock}</span>
+          </div>
+        </header>
+
+        {scanBanner && (
+          <div className={`mf-banner ${scanBanner.type === 'ok' ? 'ok' : 'err'}`} role="status">
+            <span>{scanBanner.text}</span>
+            <button type="button" onClick={() => setScanBanner(null)} className="mf-banner-close">
+              ×
+            </button>
+          </div>
         )}
-        {activeTab === 'paper' && <PaperTrading />}
-        {activeTab === 'trading' && (
-          <TradingView 
-            autoStartScan={triggerScanOnLoad} 
-            onScanStarted={() => setTriggerScanOnLoad(false)} 
-          />
-        )}
-        {activeTab === 'audit' && <AuditLog />}
-        {activeTab === 'boardroom' && <Boardroom />}
-      </main>
+
+        {/* ===================================================================
+            MAIN VIEWPORT
+            =================================================================== */}
+        <main className="mf-main">
+          {activeTab === 'terminal' && (
+            <MirofishTerminal
+              status={status}
+              deliberations={deliberations}
+              pair={pair}
+              onPairChange={setPair}
+              scanning={scanning}
+              onRunScan={handleRunScan}
+              lastScanDecision={lastScanDecision}
+              onOpenTab={(tab) => setActiveTab(tab as any)}
+            />
+          )}
+          {activeTab === 'paper' && <PaperTrading />}
+          {activeTab === 'trading' && <TradingView />}
+          {activeTab === 'boardroom' && (
+            <Boardroom
+              deliberations={deliberations}
+              loading={boardroomLoading}
+              onRefresh={() => void fetchBoardroom()}
+            />
+          )}
+          {activeTab === 'audit' && <AuditLog />}
+        </main>
+
+        {/* ===================================================================
+            BOTTOM FOOTER STATUS STRIP
+            =================================================================== */}
+        <footer className="mf-card mf-footer-bar">
+          <div className="mf-footer-left">
+            <span className="mf-footer-online">
+              <i /> AGENT ONLINE
+            </span>
+            <span>MODEL: MUSE-SPARK-1.3</span>
+            <span>TARGET: KRAKEN SPOT · {totalRounds} RECORDS</span>
+            <span>RISK POLICY: {(status?.risk_policy_status || 'CONFIGURED').toUpperCase()}</span>
+            <span className="mf-footer-blue">EXECUTION: LOCKED</span>
+          </div>
+          <div className="mf-footer-right">
+            STACK: VANTAGE-POINT · META-AI · KRAKEN
+          </div>
+        </footer>
+      </div>
     </div>
   );
 };
