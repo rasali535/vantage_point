@@ -1148,17 +1148,144 @@ input string   InpServerUrl       = "{backend_url}/api/trading/broker/mt-webhook
 input string   InpWebhookToken    = "{token}";
 input int      InpPollIntervalSec = 3;
 input double   InpMaxLotSize      = 1.0;
+input string   InpSymbolSuffix    = "";   // Leave blank for auto-detect (handles Exness 'm'/'c' suffixes)
 input ulong    InpMagicNumber     = 888999;
 input int      InpSlippagePoints  = 25;
 
 #include <Trade\\Trade.mqh>
 CTrade trade;
 
+string ExtractJsonString(const string json, const string key, const int startPos, const int endPos)
+{{
+   string pattern = "\\"" + key + "\\":\\"";
+   int p = StringFind(json, pattern, startPos);
+   if(p < 0 || (endPos > 0 && p >= endPos)) return "";
+   int valStart = p + StringLen(pattern);
+   int valEnd = StringFind(json, "\\"", valStart);
+   if(valEnd < 0) return "";
+   return StringSubstr(json, valStart, valEnd - valStart);
+}}
+
+double ExtractJsonDouble(const string json, const string key, const int startPos, const int endPos)
+{{
+   string pattern = "\\"" + key + "\\":";
+   int p = StringFind(json, pattern, startPos);
+   if(p < 0 || (endPos > 0 && p >= endPos)) return 0.0;
+   int valStart = p + StringLen(pattern);
+   int valEnd = valStart;
+   int len = StringLen(json);
+   while(valEnd < len)
+   {{
+      ushort ch = StringGetCharacter(json, valEnd);
+      if((ch >= '0' && ch <= '9') || ch == '.' || ch == '-')
+         valEnd++;
+      else
+         break;
+   }}
+   if(valEnd <= valStart) return 0.0;
+   return StringToDouble(StringSubstr(json, valStart, valEnd - valStart));
+}}
+
+string ResolveBrokerSymbol(const string baseSym)
+{{
+   string candidates[6];
+   candidates[0] = (InpSymbolSuffix != "") ? (baseSym + InpSymbolSuffix) : baseSym;
+   candidates[1] = baseSym;
+   candidates[2] = baseSym + "m";
+   candidates[3] = baseSym + "c";
+   candidates[4] = baseSym + ".pro";
+   candidates[5] = baseSym + ".r";
+
+   for(int i = 0; i < 6; i++)
+   {{
+      string cand = candidates[i];
+      if(cand == "") continue;
+      if(SymbolInfoInteger(cand, SYMBOL_EXIST) || SymbolSelect(cand, true))
+      {{
+         SymbolSelect(cand, true);
+         return cand;
+      }}
+   }}
+   return "";
+}}
+
+void ConfigureFillingMode(const string sym)
+{{
+   int filling = (int)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+   if((filling & SYMBOL_FILLING_FOK) != 0)
+      trade.SetTypeFilling(ORDER_FILLING_FOK);
+   else if((filling & SYMBOL_FILLING_IOC) != 0)
+      trade.SetTypeFilling(ORDER_FILLING_IOC);
+   else
+      trade.SetTypeFilling(ORDER_FILLING_RETURN);
+}}
+
+double NormalizeLot(const string sym, double lot)
+{{
+   double minLot  = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
+   double maxLot  = MathMin(InpMaxLotSize, SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX));
+   double stepLot = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
+   if(stepLot <= 0.0) stepLot = 0.01;
+   if(minLot <= 0.0) minLot = 0.01;
+   lot = MathMax(minLot, MathMin(maxLot, lot));
+   lot = MathRound(lot / stepLot) * stepLot;
+   return NormalizeDouble(lot, 2);
+}}
+
+void ProcessOrdersJson(const string jsonResp)
+{{
+   int pos = StringFind(jsonResp, "\\"orders\\":[");
+   if(pos < 0) return;
+
+   while(true)
+   {{
+      int objStart = StringFind(jsonResp, "{{", pos);
+      if(objStart < 0) break;
+      int objEnd = StringFind(jsonResp, "}}", objStart);
+      if(objEnd < 0) break;
+
+      string action  = ExtractJsonString(jsonResp, "action", objStart, objEnd);
+      string baseSym = ExtractJsonString(jsonResp, "symbol", objStart, objEnd);
+      string comment = ExtractJsonString(jsonResp, "comment", objStart, objEnd);
+      double lot     = ExtractJsonDouble(jsonResp, "lot", objStart, objEnd);
+      double sl      = ExtractJsonDouble(jsonResp, "sl", objStart, objEnd);
+      double tp      = ExtractJsonDouble(jsonResp, "tp", objStart, objEnd);
+
+      if(action != "" && baseSym != "")
+      {{
+         string sym = ResolveBrokerSymbol(baseSym);
+         if(sym == "")
+         {{
+            Print("[VantagePoint] Symbol not found on broker: ", baseSym);
+         }}
+         else
+         {{
+            ConfigureFillingMode(sym);
+            double normLot = NormalizeLot(sym, lot);
+            int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+            double normSL = (sl > 0.0) ? NormalizeDouble(sl, digits) : 0.0;
+            double normTP = (tp > 0.0) ? NormalizeDouble(tp, digits) : 0.0;
+            bool ok = false;
+
+            if(action == "BUY")
+               ok = trade.Buy(normLot, sym, 0.0, normSL, normTP, comment);
+            else if(action == "SELL")
+               ok = trade.Sell(normLot, sym, 0.0, normSL, normTP, comment);
+
+            if(ok)
+               Print("[VantagePoint] EXECUTED ", action, " ", normLot, " ", sym, " | Ticket=", trade.ResultOrder());
+            else
+               Print("[VantagePoint] ORDER FAILED ", action, " ", sym, " | Retcode=", trade.ResultRetcode(), " ", trade.ResultRetcodeDescription());
+         }}
+      }}
+      pos = objEnd + 1;
+   }}
+}}
+
 int OnInit()
 {{
    trade.SetExpertMagicNumber(InpMagicNumber);
    trade.SetDeviationInPoints(InpSlippagePoints);
-   trade.SetTypeFilling(ORDER_FILLING_IOC);
    EventSetTimer(InpPollIntervalSec);
    Print("[VantagePoint] Bridge Initialized. Polling endpoint: ", InpServerUrl);
    return(INIT_SUCCEEDED);
@@ -1186,10 +1313,8 @@ void OnTimer()
    if(res == 200)
    {{
       string jsonResp = CharArrayToString(resultData, 0, WHOLE_ARRAY, CP_UTF8);
-      if(StringFind(jsonResp, "\\"action\\":\\"BUY\\"") >= 0)
-         Print("[VantagePoint] Signal BUY dispatched by AI.");
-      else if(StringFind(jsonResp, "\\"action\\":\\"SELL\\"") >= 0)
-         Print("[VantagePoint] Signal SELL dispatched by AI.");
+      if(StringFind(jsonResp, "\\"status\\":\\"orders_pending\\"") >= 0)
+         ProcessOrdersJson(jsonResp);
    }}
    else if(res == -1)
    {{

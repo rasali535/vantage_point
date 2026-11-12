@@ -512,7 +512,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
 
             {exchange === 'exness' && (
               <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '6px', padding: '8px 10px', fontSize: '0.74rem', color: '#854d0e' }}>
-                <strong>Exness OpenAPI:</strong> You can generate your API Key and Secret Token in your Exness Personal Area under <em>Settings → API Access</em>. Direct REST execution on Gold (XAU/USD), Metals, Forex &amp; Indices!
+                <strong>Important for Exness Retail Accounts:</strong> Exness executes live Gold, Forex &amp; Index orders exclusively via <strong>MetaTrader 4 / MetaTrader 5</strong> servers (Personal Area API keys only cover account/partner access, not direct retail order placement). To see live trades open automatically on Exness, switch to <strong>Tab 2: MetaTrader 4 / 5 → Exness</strong> and attach <code>VantagePointBridge.mq5</code>!
               </div>
             )}
 
