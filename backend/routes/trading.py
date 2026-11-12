@@ -17,7 +17,7 @@ from pymongo.errors import DuplicateKeyError
 
 from agents.kraken import KrakenAgent
 from agents.meta_ai import meta_ai, MetaAIError, meta_http_transport
-from agents.orchestrator import trading_orchestrator
+from agents.orchestrator import trading_orchestrator, AgentStageTimeout
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
@@ -323,6 +323,23 @@ async def scan_and_analyze_route():
         ) from exc
     except Exception as exc:
         # Keep provider details server-side; never fall back to fabricated data.
+        if isinstance(exc, AgentStageTimeout):
+            elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+            logger.warning(
+                "trading_scan_stage_timeout request_id=%s elapsed_ms=%d stage=%s",
+                request_id, elapsed_ms, exc.stage,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": (
+                        f"Market analysis timed out during {exc.stage} "
+                        f"({exc.timeout_seconds:.0f}s budget). No order was submitted."
+                    ),
+                    "error_code": "agent_stage_timeout",
+                    "request_id": request_id,
+                },
+            ) from exc
         elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
         logger.exception(
             "trading_scan_failed request_id=%s elapsed_ms=%d error_type=%s",

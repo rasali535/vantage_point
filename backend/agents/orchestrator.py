@@ -27,10 +27,10 @@ class AgentStageTimeout(TimeoutError):
 
 def _agent_timeout_seconds() -> float:
     try:
-        configured = float(os.getenv("AGENT_TIMEOUT_SECONDS", "18"))
+        configured = float(os.getenv("AGENT_TIMEOUT_SECONDS", "90"))
     except (TypeError, ValueError):
-        configured = 18.0
-    return min(30.0, max(5.0, configured))
+        configured = 90.0
+    return min(120.0, max(10.0, configured))
 
 
 async def _run_stage(stage: str, awaitable):

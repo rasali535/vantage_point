@@ -45,6 +45,45 @@ def meta_http_transport() -> httpx.AsyncHTTPTransport:
     return httpx.AsyncHTTPTransport(local_address="0.0.0.0")
 
 
+DEFAULT_COMPLETION_TOKEN_BUDGET = 8000
+
+
+def completion_token_budget() -> int:
+    """Output token ceiling for one chat call, tunable via META_MAX_COMPLETION_TOKENS.
+
+    Muse Spark reasons before answering and its reasoning tokens count toward
+    this same budget (a trivial prompt already spends ~400). Keep the default
+    high enough that reasoning cannot starve the visible answer.
+    """
+    try:
+        configured = int(os.getenv("META_MAX_COMPLETION_TOKENS", str(DEFAULT_COMPLETION_TOKEN_BUDGET)))
+    except (TypeError, ValueError):
+        return DEFAULT_COMPLETION_TOKEN_BUDGET
+    return min(16000, max(512, configured))
+
+
+def extract_message_text(message: Any) -> str:
+    """Extract usable text from a chat message.
+
+    Handles the standard string content form and the content-block list form
+    ([{"type": "text", "text": "..."}]) some compatible endpoints return.
+    Returns "" when no text is present.
+    """
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            block.get("text")
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        ]
+        return "".join(parts)
+    return ""
+
+
 def normalize_model_id(model: Optional[str]) -> str:
     """Normalize a configured model ID to the bare Meta Model API ID.
 
@@ -436,11 +475,11 @@ class MetaAIClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "max_completion_tokens": 1200,
+            "max_completion_tokens": completion_token_budget(),
         }
 
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=8.0), transport=meta_http_transport()) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(100.0, connect=10.0), transport=meta_http_transport()) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=self._headers(),
@@ -448,7 +487,13 @@ class MetaAIClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-                content = data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                if not isinstance(choice, dict):
+                    raise TypeError("choice entry is not an object")
+                content = extract_message_text(choice.get("message"))
+                finish_reason = choice.get("finish_reason")
+                raw_usage = data.get("usage")
+                usage = raw_usage if isinstance(raw_usage, dict) else {}
         except httpx.HTTPStatusError as exc:
             err = self._extract_error(exc.response)
             err_code = err.get("code")
@@ -534,9 +579,25 @@ class MetaAIClient:
                 error_code="network_error",
             ) from exc
 
-        if not isinstance(content, str) or not content.strip():
+        if not content.strip():
+            completion_tokens = usage.get("completion_tokens")
+            reasoning_tokens = None
+            token_details = usage.get("completion_tokens_details")
+            if isinstance(token_details, dict):
+                reasoning_tokens = token_details.get("reasoning_tokens")
+            logger.error(
+                "meta_model_api_empty_content model=%s finish_reason=%s "
+                "completion_tokens=%s reasoning_tokens=%s",
+                model,
+                finish_reason,
+                completion_tokens,
+                reasoning_tokens,
+            )
             raise MetaAIResponseError(
-                f"Meta Model API returned empty content for model '{model}'.",
+                f"Meta Model API returned no usable text for model '{model}' "
+                f"(finish_reason={finish_reason}, "
+                f"completion_tokens={completion_tokens}, "
+                f"reasoning_tokens={reasoning_tokens}).",
                 error_code="empty_response",
             )
         return content.strip()
