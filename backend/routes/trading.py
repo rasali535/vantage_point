@@ -18,19 +18,29 @@ from pymongo.errors import DuplicateKeyError
 from agents.kraken import KrakenAgent
 from agents.meta_ai import meta_ai, MetaAIError, meta_http_transport
 from agents.orchestrator import trading_orchestrator, AgentStageTimeout
+from agents.technical_analyst import TechnicalAnalystAgent
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
 from risk.engine import RiskPolicy, DeterministicRiskEngine
 from paper_trading.engine import (
-    PaperTradeError, account_summary, initial_account, simulate_order,
-    evaluate_protective_triggers,
+    PaperTradeError, account_summary, initial_account, instrument_category,
+    simulate_order, evaluate_protective_triggers,
 )
-from paper_trading.autopilot import autopilot_status, run_autopilot_once, set_autopilot_enabled
+from paper_trading.autopilot import autopilot_status, configured_pairs, run_autopilot_once, set_autopilot_enabled
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 _kraken_agent = None
+_technical_agent = TechnicalAnalystAgent()
+_watchboard_cache: Dict[str, Any] = {"updated_at": 0.0, "tickers": []}
+
+WATCHBOARD_PAIRS = (
+    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD",
+    "XAU/USD", "XAG/USD", "XPT/USD", "XCU/USD",
+    "SPX500/USD", "NAS100/USD", "US30/USD", "GER40/USD",
+    "BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD",
+)
 
 
 def get_kraken_agent() -> KrakenAgent:
@@ -52,8 +62,9 @@ def serialize_document(document: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/status")
 async def get_trading_status():
+    import asyncio
     db = await get_database()
-    history = await db.trading_ledger.find().sort("timestamp", -1).limit(20).to_list(length=20)
+    history = await db.trading_ledger.find().sort("timestamp", -1).limit(30).to_list(length=30)
 
     balance = None
     account_status = "disabled"
@@ -64,6 +75,38 @@ async def get_trading_status():
             account_status = "connected"
         except Exception:
             account_status = "unavailable"
+
+    paper_portfolio = None
+    try:
+        paper_acc = await db.paper_accounts.find_one({"_id": "default"})
+        auto_state = await db.paper_runtime.find_one({"_id": "autopilot"})
+        if paper_acc:
+            held_pairs = list((paper_acc.get("positions") or {}).keys())
+            held_prices: Dict[str, Any] = {}
+            if held_pairs:
+                async def _fetch_mark(p: str):
+                    try:
+                        t = await agent.get_ticker(p)
+                        return p, t["last"]
+                    except Exception:
+                        return p, None
+
+                results = await asyncio.gather(*(_fetch_mark(p) for p in held_pairs))
+                for p, mark in results:
+                    if mark is not None:
+                        held_prices[p] = mark
+            summary = account_summary(paper_acc, held_prices)
+            orders_list = list(reversed(paper_acc.get("orders", [])))[:30]
+            for o in orders_list:
+                o["category"] = instrument_category(o.get("pair"))
+            paper_portfolio = {
+                **summary,
+                "autopilot_enabled": bool(auto_state and auto_state.get("enabled") is True),
+                "autopilot_pairs": configured_pairs(),
+                "recent_orders": orders_list,
+            }
+    except Exception as exc:
+        logger.warning("status_paper_portfolio_error error=%s", type(exc).__name__)
 
     research_model = os.getenv("RESEARCH_MODEL", "muse-spark-1.3").split("/")[-1]
     trading_model = os.getenv("TRADING_MODEL", "muse-spark-1.3").split("/")[-1]
@@ -79,10 +122,11 @@ async def get_trading_status():
         "exchange_status": "public_market_data_only",
         "account_status": account_status,
         "balance": balance,
+        "paper_portfolio": paper_portfolio,
         "history": [serialize_document(item) for item in history],
-        "pnl_24h": None,
-        "active_strategy": f"Market Analysis ({trading_model} + {research_model})",
-        "data_source": "kraken_spot_rest",
+        "pnl_24h": paper_portfolio.get("total_pnl") if paper_portfolio else None,
+        "active_strategy": f"Multi-Asset Paper & Analysis ({trading_model} + {research_model})",
+        "data_source": "kraken_spot_and_global_macro",
         "agents": [
             {"id": "market_intelligence", "status": meta_status, "provider": "meta"},
             {"id": "technical_analyst", "status": "ready", "provider": "deterministic"},
@@ -91,6 +135,68 @@ async def get_trading_status():
             {"id": "execution", "status": "disabled", "provider": "deterministic_risk_gate"},
             {"id": "performance", "status": "read_only", "provider": "mongodb_ledger"},
         ],
+    }
+
+
+@router.get("/market-overview")
+async def get_market_overview(pair: str = "EUR/USD"):
+    import asyncio
+    cleaned_pair = (pair or "EUR/USD").strip().upper()
+    agent = get_kraken_agent()
+
+    async def _fetch_active():
+        ticker, candles = await asyncio.gather(
+            agent.get_ticker(cleaned_pair),
+            agent.get_ohlc(cleaned_pair, interval=60),
+        )
+        tech = _technical_agent.analyse(candles)
+        return ticker, candles[-60:], tech.model_dump(mode="json")
+
+    async def _fetch_watchboard():
+        now = time.monotonic()
+        if now - float(_watchboard_cache.get("updated_at", 0.0)) < 12.0 and _watchboard_cache.get("tickers"):
+            return _watchboard_cache["tickers"]
+
+        async def _one(sym: str):
+            try:
+                t = await agent.get_ticker(sym)
+                return {
+                    "pair": sym,
+                    "category": instrument_category(sym),
+                    "last": t["last"],
+                    "bid": t["bid"],
+                    "ask": t["ask"],
+                    "high_24h": t["high_24h"],
+                    "low_24h": t["low_24h"],
+                    "change_percent": round(float(t.get("change_percent", 0.0)), 3),
+                    "source": t.get("source", "market"),
+                }
+            except Exception:
+                return None
+
+        items = await asyncio.gather(*(_one(sym) for sym in WATCHBOARD_PAIRS))
+        valid = [item for item in items if item is not None]
+        if valid:
+            _watchboard_cache["updated_at"] = now
+            _watchboard_cache["tickers"] = valid
+        return valid or _watchboard_cache.get("tickers", [])
+
+    try:
+        (ticker, candles, tech), watchboard = await asyncio.gather(
+            _fetch_active(),
+            _fetch_watchboard(),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Live market overview failed for {cleaned_pair}: {exc}") from exc
+
+    return {
+        "pair": cleaned_pair,
+        "category": instrument_category(cleaned_pair),
+        "timestamp": utc_now(),
+        "ticker": ticker,
+        "candles": candles,
+        "technical": tech,
+        "tickers": watchboard,
     }
 
 

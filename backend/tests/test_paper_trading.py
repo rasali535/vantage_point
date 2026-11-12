@@ -3,8 +3,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from paper_trading.engine import (
-    PaperTradeError, account_summary, initial_account, simulate_order,
-    evaluate_protective_triggers,
+    PaperTradeError, account_summary, initial_account, instrument_category,
+    simulate_order, evaluate_protective_triggers,
 )
 from risk.engine import DeterministicRiskEngine, RiskPolicy
 
@@ -92,21 +92,28 @@ class PaperTradingTests(unittest.TestCase):
                 stop_loss_price="49000", risk_engine=DeterministicRiskEngine(policy()),
             )
 
-    def test_forex_pairs_are_supported_in_paper_mode(self):
-        for fx_pair, ref_price, stop in (
-            ("EUR/USD", "1.1080", "1.1000"),
-            ("GBP/USD", "1.3260", "1.3180"),
-            ("USD/JPY", "157.20", "156.20"),
-            ("EUR/JPY", "174.10", "173.10"),
+    def test_forex_metals_and_indices_are_supported_in_paper_mode(self):
+        for pair, ref_price, stop, qty, expected_cat in (
+            ("EUR/USD", "1.1080", "1.1000", "10.0", "forex"),
+            ("GBP/USD", "1.3260", "1.3180", "10.0", "forex"),
+            ("USD/JPY", "157.20", "156.20", "1.0", "forex"),
+            ("XAU/USD", "3906.50", "3880.00", "0.1", "metals"),
+            ("XAG/USD", "50.37", "49.50", "2.0", "metals"),
+            ("SPX500/USD", "7595.00", "7520.00", "0.1", "indices"),
+            ("NAS100/USD", "28236.00", "28000.00", "0.02", "indices"),
         ):
+            self.assertEqual(instrument_category(pair), expected_cat)
             account, fill = simulate_order(
-                self.account, pair=fx_pair, side="BUY", quantity="1.0",
-                reference_price=ref_price, idempotency_key=f"fx-{fx_pair}",
+                self.account, pair=pair, side="BUY", quantity=qty,
+                reference_price=ref_price, idempotency_key=f"multi-{pair}",
                 stop_loss_price=stop, risk_engine=DeterministicRiskEngine(policy()),
             )
             self.assertEqual(fill["status"], "filled")
-            self.assertEqual(fill["pair"], fx_pair)
-            self.assertIn(fx_pair, account["positions"])
+            self.assertEqual(fill["pair"], pair)
+            self.assertIn(pair, account["positions"])
+            summary = account_summary(account, {pair: str(Decimal(ref_price) * Decimal("1.02"))})
+            self.assertEqual(summary["positions"][0]["category"], expected_cat)
+            self.assertGreater(Decimal(summary["unrealized_pnl"]), Decimal("0"))
 
     def test_summary_is_explicitly_paper_and_not_live(self):
         summary = account_summary(self.account)

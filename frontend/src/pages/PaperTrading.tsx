@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, Bot, Clock, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { API_BASE_URL } from '../config';
-import { FOREX_PAIRS, CRYPTO_PAIRS, ALL_TRADING_PAIRS } from '../App';
+import { FOREX_PAIRS, METAL_PAIRS, INDEX_PAIRS, CRYPTO_PAIRS, ALL_TRADING_PAIRS } from '../App';
 
 type Position = {
   pair: string;
+  category?: string;
   quantity: string;
   average_entry: string;
   mark_price: string;
   market_value: string;
+  unrealized_pnl_usd?: string;
+  unrealized_pnl_pct?: number;
   stop_loss?: string | null;
   take_profit?: string | null;
 };
@@ -40,6 +43,9 @@ type Account = {
   market_value: string;
   equity: string;
   realized_pnl: string;
+  unrealized_pnl?: string;
+  total_pnl?: string;
+  total_return_pct?: number;
   order_count: number;
   positions: Position[];
   execution_enabled: boolean;
@@ -263,7 +269,8 @@ const PaperTrading: React.FC = () => {
     }
   };
 
-  const pnlValue = Number(account?.realized_pnl || 0);
+  const pnlValue = Number(account?.total_pnl ?? account?.realized_pnl ?? 0);
+  const unrealizedValue = Number(account?.unrealized_pnl ?? 0);
   const fills = orders;
   const buyCount = fills.filter((o: any) => o.side === 'BUY').length;
   const sellCount = fills.filter((o: any) => o.side === 'SELL').length;
@@ -276,8 +283,8 @@ const PaperTrading: React.FC = () => {
   const stats = [
     { label: 'Portfolio equity', value: account ? money(account.equity) : '—', sub: account ? `${account.order_count} simulated fills` : 'Connect to load', main: true, tone: '' },
     { label: 'Virtual cash', value: account ? money(account.cash) : '—', sub: account?.currency || 'USD', main: false, tone: '' },
-    { label: 'Open positions value', value: account ? money(account.market_value) : '—', sub: account ? `${account.positions.length} open` : '—', main: false, tone: '' },
-    { label: 'Realized P&L', value: account ? money(account.realized_pnl) : '—', sub: 'Closed virtual trades', main: false, tone: !account ? '' : pnlValue >= 0 ? 'pb-pos' : 'pb-neg' },
+    { label: 'Open positions value', value: account ? money(account.market_value) : '—', sub: account ? `${account.positions.length} open · floating ${money(unrealizedValue)}` : '—', main: false, tone: '' },
+    { label: 'Total P&L (Realized + Floating)', value: account ? money(pnlValue) : '—', sub: account ? `Realized ${money(account.realized_pnl)} · Floating ${money(unrealizedValue)}` : 'Closed & open virtual trades', main: false, tone: !account ? '' : pnlValue >= 0 ? 'pb-pos' : 'pb-neg' },
   ];
 
   return (
@@ -385,11 +392,17 @@ const PaperTrading: React.FC = () => {
 
       <div className="pb-split" style={{ marginTop: 12 }}>
         <form className="pb-panel" onSubmit={submitOrder}>
-          <div className="pb-section-title" style={{ marginTop: 0 }}>Simulate Forex / Spot order</div>
-          <label className="pb-label">Market Pair (Forex &amp; Crypto)</label>
+          <div className="pb-section-title" style={{ marginTop: 0 }}>Simulate Forex / Metals / Indices / Spot order</div>
+          <label className="pb-label">Market Pair (Forex, Metals, Indices &amp; Crypto)</label>
           <select value={pair} onChange={e => setPair(e.target.value)} className="pb-select" style={{ marginBottom: 12 }}>
             <optgroup label="Forex Pairs">
               {FOREX_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+            <optgroup label="Metals (Gold / Silver / Platinum / Copper)">
+              {METAL_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+            <optgroup label="Global Indices (S&P 500 / Nasdaq / Dow / DAX)">
+              {INDEX_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
             </optgroup>
             <optgroup label="Crypto Pairs">
               {CRYPTO_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -421,14 +434,21 @@ const PaperTrading: React.FC = () => {
           {!account?.positions?.length ? <span className="pb-muted">No open virtual positions.</span> : (
             <div className="pb-tablewrap">
               <table className="pb-table">
-                <thead><tr><th>Asset</th><th>Qty</th><th>Avg entry</th><th>Mark</th><th>Stop / target</th></tr></thead>
-                <tbody>{account.positions.map(position => (
-                  <tr key={position.pair}>
-                    <td>{position.pair}</td><td>{position.quantity}</td>
-                    <td>{priceFmt(position.average_entry)}</td><td>{priceFmt(position.mark_price)}</td>
-                    <td>{position.stop_loss ? priceFmt(position.stop_loss) : '—'} / {position.take_profit ? priceFmt(position.take_profit) : '—'}</td>
-                  </tr>
-                ))}</tbody>
+                <thead><tr><th>Asset</th><th>Qty</th><th>Avg entry</th><th>Mark</th><th>Floating P&amp;L</th><th>Stop / target</th></tr></thead>
+                <tbody>{account.positions.map(position => {
+                  const uPnl = Number(position.unrealized_pnl_usd || 0);
+                  const uPct = Number(position.unrealized_pnl_pct || 0);
+                  return (
+                    <tr key={position.pair}>
+                      <td><strong>{position.pair}</strong></td><td>{position.quantity}</td>
+                      <td>{priceFmt(position.average_entry)}</td><td>{priceFmt(position.mark_price)}</td>
+                      <td className={uPnl >= 0 ? 'pb-up' : 'pb-neg'} style={{ fontWeight: 700 }}>
+                        {uPnl >= 0 ? '+' : ''}{money(uPnl)} ({uPct >= 0 ? '+' : ''}{uPct.toFixed(2)}%)
+                      </td>
+                      <td>{position.stop_loss ? priceFmt(position.stop_loss) : '—'} / {position.take_profit ? priceFmt(position.take_profit) : '—'}</td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}

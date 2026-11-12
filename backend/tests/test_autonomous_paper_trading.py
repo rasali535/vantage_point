@@ -53,12 +53,19 @@ class AutonomousPaperSizingTests(unittest.TestCase):
         self.assertIn("EUR/USD", pairs)
         self.assertIn("GBP/USD", pairs)
         self.assertIn("USD/JPY", pairs)
+        self.assertIn("XAU/USD", pairs)
+        self.assertIn("XAG/USD", pairs)
+        self.assertIn("SPX500/USD", pairs)
+        self.assertIn("NAS100/USD", pairs)
         self.assertIn("ETH/USD", pairs)
         self.assertIn("SOL/USD", pairs)
 
-    def test_configured_pairs_support_forex_and_crypto_symbols(self):
-        with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": "EUR/USD,GBP/USD,USD/JPY,EUR/JPY,BTC/USD,ETH/USD"}, clear=False):
-            self.assertEqual(configured_pairs(), ["EUR/USD", "GBP/USD", "USD/JPY", "EUR/JPY", "BTC/USD", "ETH/USD"])
+    def test_configured_pairs_support_forex_metals_indices_and_crypto_symbols(self):
+        with patch.dict(os.environ, {"PAPER_AUTOTRADE_PAIRS": "EUR/USD,USD/JPY,XAU/USD,XAG/USD,SPX500/USD,NAS100/USD,BTC/USD,ETH/USD"}, clear=False):
+            self.assertEqual(
+                configured_pairs(),
+                ["EUR/USD", "USD/JPY", "XAU/USD", "XAG/USD", "SPX500/USD", "NAS100/USD", "BTC/USD", "ETH/USD"],
+            )
 
     def test_empty_or_malformed_or_unsupported_pair_configuration_fails_closed(self):
         for value in (" ", "BTCUSD", "BTC/EUR"):

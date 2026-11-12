@@ -15,6 +15,21 @@ D = Decimal
 QTY_STEP = D("0.00000001")
 MONEY_STEP = D("0.01")
 SUPPORTED_FIAT_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"}
+SUPPORTED_METALS = {"XAU", "XAG", "XPT", "XPD", "XCU", "PAXG", "XAUT"}
+SUPPORTED_INDICES = {"SPX500", "NAS100", "US30", "UK100", "GER40", "JPN225"}
+
+
+def instrument_category(pair: Any) -> str:
+    if not isinstance(pair, str) or "/" not in pair:
+        return "other"
+    base, _, quote = pair.strip().upper().partition("/")
+    if base in SUPPORTED_METALS:
+        return "metals"
+    if base in SUPPORTED_INDICES:
+        return "indices"
+    if base in SUPPORTED_FIAT_CURRENCIES and quote in SUPPORTED_FIAT_CURRENCIES:
+        return "forex"
+    return "crypto"
 
 
 def is_supported_paper_pair(pair: Any) -> bool:
@@ -226,20 +241,44 @@ def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict
     cash = dec(account["cash"], "cash")
     positions = []
     market_value = D("0")
+    unrealized_total = D("0")
     for pair, position in account.get("positions", {}).items():
         quantity = dec(position["quantity"], "quantity")
+        avg_entry = dec(position["average_entry"], "average_entry")
         mark = dec(prices.get(pair, position["average_entry"]), "mark price")
         value = quantity * mark
+        cost = quantity * avg_entry
+        unrealized = value - cost
+        unrealized_pct = (unrealized / cost * D("100")) if cost > 0 else D("0")
         market_value += value
-        positions.append({**position, "pair": pair, "mark_price": str(mark), "market_value": str(_quantize(value, MONEY_STEP))})
+        unrealized_total += unrealized
+        positions.append({
+            **position,
+            "pair": pair,
+            "category": instrument_category(pair),
+            "mark_price": str(mark),
+            "market_value": str(_quantize(value, MONEY_STEP)),
+            "cost_basis": str(_quantize(cost, MONEY_STEP)),
+            "unrealized_pnl_usd": str(_quantize(unrealized, MONEY_STEP)),
+            "unrealized_pnl_pct": float(_quantize(unrealized_pct, D("0.01"))),
+        })
+    equity = cash + market_value
+    initial_eq = dec(account.get("initial_equity", equity), "initial_equity")
+    realized = dec(account.get("realized_pnl", "0"), "realized_pnl")
+    total_pnl = realized + unrealized_total
+    total_return_pct = (total_pnl / initial_eq * D("100")) if initial_eq > 0 else D("0")
     return {
         "mode": "paper",
         "currency": "USD",
         "cash": str(cash),
+        "initial_equity": str(_quantize(initial_eq, MONEY_STEP)),
         "positions": positions,
         "market_value": str(_quantize(market_value, MONEY_STEP)),
-        "equity": str(_quantize(cash + market_value, MONEY_STEP)),
+        "equity": str(_quantize(equity, MONEY_STEP)),
         "realized_pnl": account.get("realized_pnl", "0"),
+        "unrealized_pnl": str(_quantize(unrealized_total, MONEY_STEP)),
+        "total_pnl": str(_quantize(total_pnl, MONEY_STEP)),
+        "total_return_pct": float(_quantize(total_return_pct, D("0.01"))),
         "order_count": len(account.get("orders", [])),
         "execution_enabled": False,
         "exchange_order_submitted": False,

@@ -23,6 +23,22 @@ export const FOREX_PAIRS = [
   'AUD/JPY',
 ];
 
+export const METAL_PAIRS = [
+  'XAU/USD',
+  'XAG/USD',
+  'XPT/USD',
+  'XCU/USD',
+];
+
+export const INDEX_PAIRS = [
+  'SPX500/USD',
+  'NAS100/USD',
+  'US30/USD',
+  'UK100/USD',
+  'GER40/USD',
+  'JPN225/USD',
+];
+
 export const CRYPTO_PAIRS = [
   'BTC/USD',
   'ETH/USD',
@@ -36,7 +52,12 @@ export const CRYPTO_PAIRS = [
   'BCH/USD',
 ];
 
-export const ALL_TRADING_PAIRS = [...FOREX_PAIRS, ...CRYPTO_PAIRS];
+export const ALL_TRADING_PAIRS = [
+  ...FOREX_PAIRS,
+  ...METAL_PAIRS,
+  ...INDEX_PAIRS,
+  ...CRYPTO_PAIRS,
+];
 
 const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]; loading: boolean; onRefresh: () => void }) => {
   return (
@@ -265,7 +286,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <div className="mf-brand-eyebrow">
-                VANTAGE POINT SIMULATION · FOREX &amp; CRYPTO RELATIONSHIP GRAPH
+                VANTAGE POINT SIMULATION · FOREX, METALS, INDICES &amp; CRYPTO
               </div>
               <div className="mf-brand-title">
                 MUSE SPARK 1.3 <span className="mf-brand-sep">·</span>{' '}
@@ -303,11 +324,21 @@ const App: React.FC = () => {
                   if (e.target.value !== 'CUSTOM') setPair(e.target.value);
                 }}
                 className="mf-pair-input"
-                style={{ width: '115px', cursor: 'pointer' }}
-                aria-label="Select Forex or Crypto pair"
+                style={{ width: '132px', cursor: 'pointer' }}
+                aria-label="Select Forex, Metals, Indices, or Crypto pair"
               >
                 <optgroup label="Forex Pairs">
                   {FOREX_PAIRS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Metals (Gold / Silver / Platinum / Copper)">
+                  {METAL_PAIRS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Global Indices (S&P / Nasdaq / Dow / DAX)">
+                  {INDEX_PAIRS.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </optgroup>
@@ -320,7 +351,7 @@ const App: React.FC = () => {
             </div>
 
             <span className="mf-status-live">
-              <i /> LIVE · FOREX &amp; SPOT
+              <i /> LIVE · FX · METALS · INDICES
             </span>
             <span className="mf-status-round">ROUND #{totalRounds || 1}</span>
             <span className="mf-status-clock">{utcClock}</span>
@@ -373,7 +404,7 @@ const App: React.FC = () => {
               <i /> AGENT ONLINE
             </span>
             <span>MODEL: MUSE-SPARK-1.3</span>
-            <span>MARKETS: 12 FOREX + 10 CRYPTO · {totalRounds} RECORDS</span>
+            <span>MARKETS: 12 FX · 4 METALS · 6 INDICES · 10 CRYPTO</span>
             <span>RISK POLICY: {(status?.risk_policy_status || 'CONFIGURED').toUpperCase()}</span>
             <span className="mf-footer-blue">MODE: PAPER &amp; RESEARCH</span>
           </div>

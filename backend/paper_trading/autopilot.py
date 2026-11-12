@@ -24,6 +24,7 @@ from paper_trading.engine import (
     account_equity,
     evaluate_protective_triggers,
     initial_account,
+    instrument_category,
     is_supported_paper_pair,
     simulate_order,
 )
@@ -39,8 +40,9 @@ _orchestrator = TradingOrchestrator()
 _technical_precheck = TechnicalAnalystAgent()
 
 DEFAULT_AUTOTRADE_PAIRS = (
-    "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,USD/CHF,"
-    "EUR/GBP,EUR/JPY,EUR/CHF,AUD/JPY,"
+    "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,USD/CHF,EUR/GBP,EUR/JPY,"
+    "XAU/USD,XAG/USD,XPT/USD,XCU/USD,"
+    "SPX500/USD,NAS100/USD,US30/USD,GER40/USD,"
     "BTC/USD,ETH/USD,SOL/USD,XRP/USD"
 )
 
@@ -132,9 +134,12 @@ async def _record_event(db, event: dict) -> None:
                 "order_id": record_id,
                 "symbol": event["pair"],
                 "pair": event["pair"],
+                "category": instrument_category(event["pair"]),
                 "side": str(event["side"]).lower(),
                 "volume": event.get("quantity"),
                 "price": event.get("fill_price"),
+                "gross_usd": event.get("gross_usd"),
+                "fee_usd": event.get("fee_usd"),
                 "status": "paper_filled",
                 "execution_mode": "paper",
                 "exchange_confirmed": False,
@@ -142,6 +147,27 @@ async def _record_event(db, event: dict) -> None:
                 "realized_pnl_usd": event.get("realized_pnl_usd"),
                 "timestamp": timestamp,
                 "time": timestamp,
+            })
+        except Exception:
+            pass
+
+    boardroom_col = getattr(db, "boardroom_history", None)
+    if boardroom_col is not None and event.get("pair") and event.get("side"):
+        try:
+            await boardroom_col.insert_one({
+                "_id": f"paper_boardroom:{record_id}",
+                "pair": event["pair"],
+                "category": instrument_category(event["pair"]),
+                "timestamp": timestamp,
+                "strategy": {
+                    "action": str(event["side"]).upper(),
+                    "confidence": float(event.get("strategy_confidence") or 0.72),
+                    "rationale": event.get("strategy_rationale") or f"Autonomous {event['side']} execution on {event['pair']} @ {event.get('fill_price')}.",
+                },
+                "technical_analysis": event.get("technical_analysis") or {},
+                "risk_assessment": {"summary": "Approved by DeterministicRiskEngine"},
+                "execution_assessment": {"status": "paper_simulated", "execution_enabled": False},
+                "execution_status": "paper_simulated",
             })
         except Exception:
             pass
@@ -381,6 +407,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             "event_type": "autonomous_entry",
             "strategy_confidence": str(confidence),
             "strategy_rationale": rationale[:1000],
+            "technical_analysis": analysis.get("technical_analysis"),
             "stop_loss": str(stop),
             "take_profit": str(target),
         })
@@ -405,6 +432,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             "event_type": "autonomous_signal_exit",
             "strategy_confidence": str(confidence),
             "strategy_rationale": rationale[:1000],
+            "technical_analysis": analysis.get("technical_analysis"),
         })
         return {"pair": pair, "decision": "SELL", "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
 

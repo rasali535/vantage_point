@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 interface MirofishTerminalProps {
   status: any;
@@ -62,22 +63,38 @@ const fmtSignedUsd = (val: number | null | undefined, decimals?: number) => {
   return `${sign}${fmtUsd(Math.abs(val), d)}`;
 };
 
-const QUICK_PAIRS = [
-  'EUR/USD',
-  'GBP/USD',
-  'USD/JPY',
-  'AUD/USD',
-  'USD/CAD',
-  'USD/CHF',
-  'EUR/GBP',
-  'EUR/JPY',
-  'EUR/CHF',
-  'AUD/JPY',
-  'BTC/USD',
-  'ETH/USD',
-  'SOL/USD',
-  'XRP/USD',
+const QUICK_PAIRS: Array<{ pair: string; label: string; category: 'forex' | 'metals' | 'indices' | 'crypto' }> = [
+  { pair: 'EUR/USD', label: 'EUR/USD', category: 'forex' },
+  { pair: 'GBP/USD', label: 'GBP/USD', category: 'forex' },
+  { pair: 'USD/JPY', label: 'USD/JPY', category: 'forex' },
+  { pair: 'AUD/USD', label: 'AUD/USD', category: 'forex' },
+  { pair: 'USD/CAD', label: 'USD/CAD', category: 'forex' },
+  { pair: 'USD/CHF', label: 'USD/CHF', category: 'forex' },
+  { pair: 'EUR/GBP', label: 'EUR/GBP', category: 'forex' },
+  { pair: 'EUR/JPY', label: 'EUR/JPY', category: 'forex' },
+  { pair: 'XAU/USD', label: 'XAU/USD · GOLD', category: 'metals' },
+  { pair: 'XAG/USD', label: 'XAG/USD · SILVER', category: 'metals' },
+  { pair: 'XPT/USD', label: 'XPT/USD · PLATINUM', category: 'metals' },
+  { pair: 'XCU/USD', label: 'XCU/USD · COPPER', category: 'metals' },
+  { pair: 'SPX500/USD', label: 'SPX500 · S&P 500', category: 'indices' },
+  { pair: 'NAS100/USD', label: 'NAS100 · NASDAQ', category: 'indices' },
+  { pair: 'US30/USD', label: 'US30 · DOW 30', category: 'indices' },
+  { pair: 'GER40/USD', label: 'GER40 · DAX 40', category: 'indices' },
+  { pair: 'UK100/USD', label: 'UK100 · FTSE', category: 'indices' },
+  { pair: 'JPN225/USD', label: 'JPN225 · NIKKEI', category: 'indices' },
+  { pair: 'BTC/USD', label: 'BTC/USD', category: 'crypto' },
+  { pair: 'ETH/USD', label: 'ETH/USD', category: 'crypto' },
+  { pair: 'SOL/USD', label: 'SOL/USD', category: 'crypto' },
+  { pair: 'XRP/USD', label: 'XRP/USD', category: 'crypto' },
 ];
+
+const inferCategory = (p: string): string => {
+  const base = (p || '').split('/')[0].toUpperCase();
+  if (['XAU', 'XAG', 'XPT', 'XPD', 'XCU', 'PAXG'].includes(base)) return 'METALS';
+  if (['SPX500', 'NAS100', 'US30', 'UK100', 'GER40', 'JPN225'].includes(base)) return 'INDICES';
+  if (['EUR', 'GBP', 'USD', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD'].includes(base)) return 'FOREX';
+  return 'CRYPTO';
+};
 
 const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
   status,
@@ -91,16 +108,62 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
 }) => {
   const [ticker, setTicker] = useState<KrakenTicker | null>(null);
   const [candles, setCandles] = useState<KrakenCandle[]>([]);
+  const [watchboard, setWatchboard] = useState<Array<{ pair: string; category: string; last: number; change_percent: number; high_24h?: number; low_24h?: number }>>([]);
+  const [marketCategoryFilter, setMarketCategoryFilter] = useState<'all' | 'forex' | 'metals' | 'indices' | 'crypto'>('all');
   const [pulseLoading, setPulseLoading] = useState(false);
   const [pulseError, setPulseError] = useState('');
   const [topWinIndex, setTopWinIndex] = useState(0);
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(15);
 
   const fetchKrakenPulse = useCallback(async (targetPair: string) => {
     setPulseLoading(true);
     setPulseError('');
     try {
       const encoded = encodeURIComponent(targetPair);
+      // Primary: backend multi-asset market overview (supports Forex, Metals, Indices, and Crypto)
+      const backendRes = await fetch(`${API_BASE_URL}/api/trading/market-overview?pair=${encoded}`).catch(() => null);
+      if (backendRes && backendRes.ok) {
+        const overview = await backendRes.json();
+        const t = overview?.ticker;
+        if (t && typeof t.last === 'number') {
+          const last = Number(t.last);
+          const open24h = Number(t.open || last);
+          const changeUsd = open24h > 0 ? last - open24h : 0;
+          const changePct = typeof t.change_percent === 'number' ? t.change_percent : (open24h > 0 ? ((last - open24h) / open24h) * 100 : 0);
+          setTicker({
+            pair: targetPair,
+            ask: Number(t.ask || last),
+            bid: Number(t.bid || last),
+            last,
+            high24h: Number(t.high_24h || last),
+            low24h: Number(t.low_24h || last),
+            volume24h: Number(t.volume_24h || 0),
+            open24h,
+            changeUsd,
+            changePct,
+          });
+        }
+        if (Array.isArray(overview?.candles) && overview.candles.length > 0) {
+          setCandles(
+            overview.candles.slice(-40).map((c: any) => ({
+              timestamp: Number(c.timestamp),
+              open: Number(c.open),
+              high: Number(c.high),
+              low: Number(c.low),
+              close: Number(c.close),
+              vwap: Number(c.vwap || c.close),
+              volume: Number(c.volume || 0),
+            }))
+          );
+        }
+        if (Array.isArray(overview?.tickers) && overview.tickers.length > 0) {
+          setWatchboard(overview.tickers);
+        }
+        setCountdown(15);
+        return;
+      }
+
+      // Fallback: direct Kraken public REST for Forex & Crypto
       const [tickerRes, ohlcRes] = await Promise.all([
         fetch(`https://api.kraken.com/0/public/Ticker?pair=${encoded}&assetVersion=1`),
         fetch(`https://api.kraken.com/0/public/OHLC?pair=${encoded}&interval=60&assetVersion=1`),
@@ -154,9 +217,9 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           setCandles(parsed);
         }
       }
-      setCountdown(20);
+      setCountdown(15);
     } catch (err: any) {
-      setPulseError(err?.message || 'Live Kraken feed temporarily unreachable');
+      setPulseError(err?.message || 'Live market feed temporarily unreachable');
     } finally {
       setPulseLoading(false);
     }
@@ -166,13 +229,13 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
     void fetchKrakenPulse(pair);
     const refreshId = window.setInterval(() => {
       void fetchKrakenPulse(pair);
-    }, 20000);
+    }, 15000);
     return () => window.clearInterval(refreshId);
   }, [pair, fetchKrakenPulse]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setCountdown((prev) => (prev <= 1 ? 20 : prev - 1));
+      setCountdown((prev) => (prev <= 1 ? 15 : prev - 1));
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -505,17 +568,39 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
     };
   }, [candles, ticker]);
 
+  const paperPortfolio = status?.paper_portfolio || null;
+  const openPositions: any[] = Array.isArray(paperPortfolio?.positions) ? paperPortfolio.positions : [];
+  const placedOrders: any[] = Array.isArray(paperPortfolio?.recent_orders) && paperPortfolio.recent_orders.length
+    ? paperPortfolio.recent_orders
+    : ledgerHistory;
+
+  const filteredQuickPairs = useMemo(
+    () =>
+      marketCategoryFilter === 'all'
+        ? QUICK_PAIRS
+        : QUICK_PAIRS.filter((item) => item.category === marketCategoryFilter),
+    [marketCategoryFilter]
+  );
+
+  const watchboardByPair = useMemo(() => {
+    const map: Record<string, { last: number; change_percent: number }> = {};
+    watchboard.forEach((w) => {
+      if (w && w.pair) map[w.pair] = { last: Number(w.last), change_percent: Number(w.change_percent || 0) };
+    });
+    return map;
+  }, [watchboard]);
+
   const primaryDisplayValue =
-    typeof status?.balance?.USD === 'number'
-      ? fmtUsd(status.balance.USD, 0)
-      : ticker
+    ticker
       ? fmtUsd(ticker.last)
+      : paperPortfolio?.equity
+      ? fmtUsd(Number(paperPortfolio.equity), 2)
       : '—';
 
   const primaryDisplaySub =
-    typeof status?.balance?.USD === 'number'
-      ? 'verified kraken balance'
-      : 'live kraken forex & spot feed';
+    ticker
+      ? `${inferCategory(pair).toLowerCase()} live feed · 24h ${ticker.changePct >= 0 ? '+' : ''}${ticker.changePct.toFixed(2)}%`
+      : 'live forex, metals, indices & crypto feed';
 
   const convergenceSegments = 16;
   const activeSegments = Math.round(signalStats.avgConfidence * convergenceSegments);
@@ -526,23 +611,71 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           BAND 1: DUAL HERO CARD (PORTFOLIO/MARKET HERO + TOP SIGNALS CAROUSEL)
           ===================================================================== */}
       <section className="mf-card mf-band-hero">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="mf-eyebrow-text" style={{ marginRight: '4px' }}>ASSET CLASSES:</span>
+            {([
+              { id: 'all', label: 'ALL MARKETS (22)' },
+              { id: 'forex', label: 'FOREX (8)' },
+              { id: 'metals', label: 'METALS · GOLD/SILVER (4)' },
+              { id: 'indices', label: 'INDICES · S&P/NAS/DOW (6)' },
+              { id: 'crypto', label: 'CRYPTO (4)' },
+            ] as const).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setMarketCategoryFilter(cat.id)}
+                className="mf-pill-action"
+                style={
+                  marketCategoryFilter === cat.id
+                    ? { background: '#2563eb', color: '#ffffff', borderColor: '#2563eb' }
+                    : undefined
+                }
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+          <span className="mf-mono-muted" style={{ fontSize: '0.68rem' }}>
+            CLICK ANY INSTRUMENT TO VIEW LIVE MOVEMENTS &amp; SCAN
+          </span>
+        </div>
+
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid #eef2f6' }}>
-          <span className="mf-eyebrow-text" style={{ alignSelf: 'center', marginRight: '4px' }}>MARKETS:</span>
-          {QUICK_PAIRS.map((qp) => (
-            <button
-              key={qp}
-              type="button"
-              onClick={() => onPairChange(qp)}
-              className="mf-pill-action"
-              style={
-                qp === pair
-                  ? { background: '#111827', color: '#ffffff', borderColor: '#111827' }
-                  : undefined
-              }
-            >
-              {qp}
-            </button>
-          ))}
+          {filteredQuickPairs.map((qp) => {
+            const liveQuote = qp.pair === pair && ticker
+              ? { last: ticker.last, change_percent: ticker.changePct }
+              : watchboardByPair[qp.pair];
+            const isSelected = qp.pair === pair;
+            return (
+              <button
+                key={qp.pair}
+                type="button"
+                onClick={() => onPairChange(qp.pair)}
+                className="mf-pill-action"
+                style={
+                  isSelected
+                    ? { background: '#111827', color: '#ffffff', borderColor: '#111827', display: 'inline-flex', gap: '6px', alignItems: 'center' }
+                    : { display: 'inline-flex', gap: '6px', alignItems: 'center' }
+                }
+              >
+                <span>{qp.label}</span>
+                {liveQuote && (
+                  <span
+                    style={{
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      color: isSelected
+                        ? (liveQuote.change_percent >= 0 ? '#93c5fd' : '#fca5a5')
+                        : (liveQuote.change_percent >= 0 ? '#059669' : '#9a3412'),
+                    }}
+                  >
+                    {fmtUsd(liveQuote.last)} ({liveQuote.change_percent >= 0 ? '+' : ''}{liveQuote.change_percent.toFixed(2)}%)
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div className="mf-hero-grid">
@@ -550,18 +683,20 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           <div className="mf-hero-left">
             <div className="mf-eyebrow-row">
               <span className="mf-dot mf-dot-green" />
-              <span className="mf-eyebrow-text">MUSE SPARK 1.3 · SPOT TELEMETRY</span>
-              <span className="mf-tag-outline">{pair} · HOURLY</span>
-              <span className="mf-tag-outline">● 1× SPOT</span>
+              <span className="mf-eyebrow-text">MUSE SPARK 1.3 · {inferCategory(pair)} TELEMETRY</span>
+              <span className="mf-tag-outline">{pair} · 1H</span>
+              <span className="mf-tag-outline">● {inferCategory(pair)}</span>
             </div>
 
             <div className="mf-hero-big-number">{primaryDisplayValue}</div>
 
             <div className="mf-hero-meta-row">
               <span className="mf-mono-muted">{primaryDisplaySub}</span>
-              <span className="mf-mono-strong">
-                {allDeliberations.length + ledgerHistory.length} records
-              </span>
+              {ticker && (
+                <span className={ticker.changeUsd >= 0 ? 'mf-badge-blue' : 'mf-badge-amber'}>
+                  {ticker.changeUsd >= 0 ? '▲' : '▼'} {fmtSignedUsd(ticker.changeUsd)} ({ticker.changePct >= 0 ? '+' : ''}{ticker.changePct.toFixed(2)}%)
+                </span>
+              )}
               <span className="mf-badge-blue">
                 {Math.round(signalStats.pUp * 100)}% BULL BIAS
               </span>
@@ -690,6 +825,250 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* =====================================================================
+          BAND 1B: LIVE PORTFOLIO PROFIT, OPEN POSITIONS P&L & PLACED TRADES
+          ===================================================================== */}
+      <section className="mf-card">
+        <div className="mf-section-bar">
+          <div className="mf-section-title-left">
+            <span className="mf-dot mf-dot-green" />
+            <span className="mf-card-heading">
+              Live Bot Portfolio, Open Positions &amp; Profit / Loss — {openPositions.length} Open · {paperPortfolio?.order_count ?? placedOrders.length} Placed Trades
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="mf-pill-live-sm">
+              ● {paperPortfolio?.autopilot_enabled ? 'AUTOPILOT ACTIVE' : 'PAPER PORTFOLIO'}
+            </span>
+            <button
+              type="button"
+              className="mf-pill-action"
+              onClick={() => onOpenTab('paper')}
+            >
+              MANAGE BOT &amp; ORDERS →
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Portfolio & P&L Summary Strip */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '10px',
+            marginBottom: '14px',
+          }}
+        >
+          <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
+            <div className="mf-micro-label">PORTFOLIO EQUITY (LIVE MARK)</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
+              {paperPortfolio ? fmtUsd(Number(paperPortfolio.equity), 2) : '$1,000.00'}
+            </div>
+            <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
+              Initial {paperPortfolio ? fmtUsd(Number(paperPortfolio.initial_equity || 1000), 2) : '$1,000.00'} · {paperPortfolio?.order_count ?? placedOrders.length} placed fills
+            </div>
+          </div>
+
+          <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
+            <div className="mf-micro-label">TOTAL PROFIT / LOSS (REALIZED + FLOATING)</div>
+            {(() => {
+              const totPnl = Number(paperPortfolio?.total_pnl ?? 0);
+              const totPct = Number(paperPortfolio?.total_return_pct ?? 0);
+              return (
+                <>
+                  <div
+                    style={{
+                      fontSize: '1.35rem',
+                      fontWeight: 800,
+                      color: totPnl >= 0 ? '#059669' : '#9a3412',
+                      fontFamily: 'var(--font-mono)',
+                      marginTop: '4px',
+                    }}
+                  >
+                    {fmtSignedUsd(totPnl, 2)} ({totPct >= 0 ? '+' : ''}{totPct.toFixed(2)}%)
+                  </div>
+                  <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
+                    Floating {fmtSignedUsd(Number(paperPortfolio?.unrealized_pnl ?? 0), 2)} · Realized {fmtSignedUsd(Number(paperPortfolio?.realized_pnl ?? 0), 2)}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
+            <div className="mf-micro-label">OPEN POSITIONS MARKET VALUE</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#2563eb', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
+              {paperPortfolio ? fmtUsd(Number(paperPortfolio.market_value), 2) : '$0.00'}
+            </div>
+            <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
+              {openPositions.length} active positions across FX, Metals, Indices &amp; Crypto
+            </div>
+          </div>
+
+          <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
+            <div className="mf-micro-label">AVAILABLE VIRTUAL CASH</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
+              {paperPortfolio ? fmtUsd(Number(paperPortfolio.cash), 2) : '$1,000.00'}
+            </div>
+            <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
+              1× spot collateral · 15% max allocation per pair
+            </div>
+          </div>
+        </div>
+
+        {/* Two-column layout: Open Positions with Live P&L + Recent Placed Trades */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+            gap: '14px',
+          }}
+        >
+          {/* Left: Open Positions & Live Floating Profit/Loss */}
+          <div className="mf-subcard" style={{ padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span className="mf-micro-header" style={{ margin: 0 }}>
+                OPEN POSITIONS · LIVE MARK &amp; FLOATING PROFIT ({openPositions.length})
+              </span>
+              <span className="mf-mono-muted" style={{ fontSize: '0.68rem' }}>
+                Click any position to view chart
+              </span>
+            </div>
+            {openPositions.length === 0 ? (
+              <div className="mf-mono-muted" style={{ padding: '18px 0', textAlign: 'center' }}>
+                No open positions yet. Start the bot or place a simulated trade in Paper Desk.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="mf-ledger-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>PAIR</th>
+                      <th>CLASS</th>
+                      <th>QTY</th>
+                      <th>ENTRY</th>
+                      <th>LIVE MARK</th>
+                      <th>VALUE</th>
+                      <th>FLOATING P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openPositions.map((pos: any) => {
+                      const uPnl = Number(pos.unrealized_pnl_usd || 0);
+                      const uPct = Number(pos.unrealized_pnl_pct || 0);
+                      const cat = String(pos.category || inferCategory(pos.pair)).toUpperCase();
+                      return (
+                        <tr
+                          key={pos.pair}
+                          onClick={() => onPairChange(pos.pair)}
+                          style={{
+                            cursor: 'pointer',
+                            background: pos.pair === pair ? '#eff6ff' : undefined,
+                          }}
+                        >
+                          <td className="mf-td-strong">{pos.pair}</td>
+                          <td>
+                            <span className="mf-tag-outline" style={{ fontSize: '0.62rem', padding: '1px 5px' }}>
+                              {cat}
+                            </span>
+                          </td>
+                          <td>{Number(pos.quantity).toFixed(4)}</td>
+                          <td>{fmtUsd(Number(pos.average_entry))}</td>
+                          <td style={{ fontWeight: 700, color: '#2563eb' }}>{fmtUsd(Number(pos.mark_price))}</td>
+                          <td>{fmtUsd(Number(pos.market_value), 2)}</td>
+                          <td
+                            style={{
+                              fontWeight: 800,
+                              color: uPnl >= 0 ? '#059669' : '#9a3412',
+                            }}
+                          >
+                            {fmtSignedUsd(uPnl, 2)} ({uPct >= 0 ? '+' : ''}{uPct.toFixed(2)}%)
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Recent Placed Trades & Fills */}
+          <div className="mf-subcard" style={{ padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span className="mf-micro-header" style={{ margin: 0 }}>
+                PLACED TRADES &amp; BOT EXECUTION TAPE ({placedOrders.length})
+              </span>
+              <span className="mf-mono-muted" style={{ fontSize: '0.68rem' }}>
+                Simulated fills · Live orders locked
+              </span>
+            </div>
+            {placedOrders.length === 0 ? (
+              <div className="mf-mono-muted" style={{ padding: '18px 0', textAlign: 'center' }}>
+                No placed trades recorded yet.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto', maxHeight: '260px', overflowY: 'auto' }}>
+                <table className="mf-ledger-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>PAIR</th>
+                      <th>SIDE</th>
+                      <th>QTY</th>
+                      <th>FILL PRICE</th>
+                      <th>NOTIONAL</th>
+                      <th>P&amp;L</th>
+                      <th>TIME</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {placedOrders.slice(0, 12).map((ord: any, idx: number) => {
+                      const oPair = ord.pair || ord.symbol || '—';
+                      const oSide = String(ord.side || 'BUY').toUpperCase();
+                      const oQty = Number(ord.quantity ?? ord.volume ?? 0);
+                      const oPrice = Number(ord.fill_price ?? ord.price ?? 0);
+                      const oGross = Number(ord.gross_usd ?? (oQty * oPrice));
+                      const rPnl = ord.realized_pnl_usd !== null && ord.realized_pnl_usd !== undefined
+                        ? Number(ord.realized_pnl_usd)
+                        : null;
+                      const ts = ord.timestamp || ord.time;
+                      return (
+                        <tr
+                          key={ord.idempotency_key || ord.id || idx}
+                          onClick={() => oPair !== '—' && onPairChange(oPair)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td className="mf-td-strong">{oPair}</td>
+                          <td>
+                            <span className={`mf-side-pill ${oSide === 'BUY' ? 'buy' : 'sell'}`}>
+                              {oSide}
+                            </span>
+                          </td>
+                          <td>{oQty.toFixed(4)}</td>
+                          <td>{fmtUsd(oPrice)}</td>
+                          <td>{fmtUsd(oGross, 2)}</td>
+                          <td
+                            style={{
+                              fontWeight: 700,
+                              color: rPnl === null ? '#64748b' : rPnl >= 0 ? '#059669' : '#9a3412',
+                            }}
+                          >
+                            {rPnl === null ? 'OPEN' : fmtSignedUsd(rPnl, 2)}
+                          </td>
+                          <td className="mf-td-muted">
+                            {ts ? new Date(ts).toISOString().slice(11, 19) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </section>

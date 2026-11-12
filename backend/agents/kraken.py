@@ -19,6 +19,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 KRAKEN_API_BASE = "https://api.kraken.com/0"
+YAHOO_FINANCE_BASES = (
+    "https://query1.finance.yahoo.com/v8/finance/chart",
+    "https://query2.finance.yahoo.com/v8/finance/chart",
+)
+
+GLOBAL_MACRO_SYMBOL_MAP: Dict[str, str] = {
+    # Precious & Industrial Metals
+    "XAU/USD": "GC=F",
+    "XAG/USD": "SI=F",
+    "XPT/USD": "PL=F",
+    "XCU/USD": "HG=F",
+    # Global Equity Indices
+    "SPX500/USD": "^GSPC",
+    "NAS100/USD": "^NDX",
+    "US30/USD": "^DJI",
+    "UK100/USD": "^FTSE",
+    "GER40/USD": "^GDAXI",
+    "JPN225/USD": "^N225",
+}
 
 
 class KrakenAgent:
@@ -101,15 +120,124 @@ class KrakenAgent:
             raise RuntimeError("Kraken returned an invalid private account response.")
         return data
 
+    async def _yahoo_chart_request(self, yahoo_symbol: str, interval: str = "60m", range_str: str = "1mo") -> Dict:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }
+        last_exc: Exception | None = None
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0), headers=headers) as client:
+            for base in YAHOO_FINANCE_BASES:
+                try:
+                    response = await client.get(
+                        f"{base}/{yahoo_symbol}",
+                        params={"interval": interval, "range": range_str},
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    results = payload.get("chart", {}).get("result")
+                    if isinstance(results, list) and results and isinstance(results[0], dict):
+                        return results[0]
+                except Exception as exc:
+                    last_exc = exc
+        raise RuntimeError(f"Global macro market-data request failed for {yahoo_symbol}.") from last_exc
+
+    async def _get_macro_ticker(self, pair: str, yahoo_symbol: str) -> Dict:
+        chart = await self._yahoo_chart_request(yahoo_symbol, interval="60m", range_str="5d")
+        meta = chart.get("meta") or {}
+        quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
+        closes = [float(x) for x in (quote.get("close") or []) if x is not None and float(x) > 0]
+        highs = [float(x) for x in (quote.get("high") or []) if x is not None and float(x) > 0]
+        lows = [float(x) for x in (quote.get("low") or []) if x is not None and float(x) > 0]
+        vols = [float(x) for x in (quote.get("volume") or []) if x is not None and float(x) >= 0]
+
+        last_price = float(meta.get("regularMarketPrice") or (closes[-1] if closes else 0.0))
+        if last_price <= 0:
+            raise RuntimeError(f"Incomplete market price returned for {pair}.")
+
+        prev_close = float(
+            meta.get("chartPreviousClose")
+            or meta.get("previousClose")
+            or (closes[-24] if len(closes) >= 24 else (closes[0] if closes else last_price))
+        )
+        recent_highs = highs[-24:] if len(highs) >= 24 else highs
+        recent_lows = lows[-24:] if len(lows) >= 24 else lows
+        recent_vols = vols[-24:] if len(vols) >= 24 else vols
+
+        high_24h = max([last_price, *(recent_highs or [last_price])])
+        low_24h = min([last_price, *(recent_lows or [last_price])])
+        # Apply realistic tight institutional spread (2 bps) around mid/last
+        half_spread = max(last_price * 0.0001, 0.0001)
+        bid = round(last_price - half_spread, 6)
+        ask = round(last_price + half_spread, 6)
+        change_pct = ((last_price - prev_close) / prev_close) * 100.0 if prev_close > 0 else 0.0
+
+        return {
+            "pair": pair,
+            "ask": ask,
+            "bid": bid,
+            "last": last_price,
+            "high_24h": high_24h,
+            "low_24h": low_24h,
+            "volume_24h": sum(recent_vols) if recent_vols else 0.0,
+            "open": prev_close,
+            "change_percent": change_pct,
+            "source": "global_macro_feed",
+        }
+
+    async def _get_macro_ohlc(self, pair: str, yahoo_symbol: str, interval: int = 60) -> List[Dict]:
+        yf_interval = "60m" if interval >= 60 else f"{max(5, interval)}m"
+        chart = await self._yahoo_chart_request(yahoo_symbol, interval=yf_interval, range_str="1mo")
+        timestamps = chart.get("timestamp") or []
+        quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
+        opens = quote.get("open") or []
+        highs = quote.get("high") or []
+        lows = quote.get("low") or []
+        closes = quote.get("close") or []
+        volumes = quote.get("volume") or []
+
+        parsed: List[Dict] = []
+        for idx, ts in enumerate(timestamps):
+            try:
+                o = opens[idx] if idx < len(opens) else None
+                h = highs[idx] if idx < len(highs) else None
+                l = lows[idx] if idx < len(lows) else None
+                c = closes[idx] if idx < len(closes) else None
+                v = volumes[idx] if idx < len(volumes) else 0.0
+                if o is None or h is None or l is None or c is None:
+                    continue
+                fo, fh, fl, fc = float(o), float(h), float(l), float(c)
+                if min(fo, fh, fl, fc) <= 0:
+                    continue
+                parsed.append({
+                    "timestamp": int(ts),
+                    "open": fo,
+                    "high": max(fo, fh, fl, fc),
+                    "low": min(fo, fh, fl, fc),
+                    "close": fc,
+                    "vwap": round((fh + fl + fc) / 3.0, 6),
+                    "volume": float(v or 0.0),
+                })
+            except (TypeError, ValueError):
+                continue
+
+        if not parsed:
+            raise RuntimeError(f"No valid OHLC candles returned for {pair}.")
+        return parsed
+
     async def get_ticker(self, pair: str) -> Dict:
-        result = await self._public_request("Ticker", {"pair": pair})
+        normalized_pair = pair.strip().upper()
+        if normalized_pair in GLOBAL_MACRO_SYMBOL_MAP:
+            return await self._get_macro_ticker(normalized_pair, GLOBAL_MACRO_SYMBOL_MAP[normalized_pair])
+
+        result = await self._public_request("Ticker", {"pair": normalized_pair})
         if not result:
             raise RuntimeError("Kraken returned no ticker for the requested pair.")
 
         # Kraken's internal pair key can differ from its human-readable alias.
         raw = next(iter(result.values()))
         ticker = {
-            "pair": pair,
+            "pair": normalized_pair,
             "ask": float((raw.get("a") or [0])[0]),
             "bid": float((raw.get("b") or [0])[0]),
             "last": float((raw.get("c") or [0])[0]),
@@ -128,9 +256,13 @@ class KrakenAgent:
         return ticker
 
     async def get_ohlc(self, pair: str, interval: int = 60) -> List[Dict]:
+        normalized_pair = pair.strip().upper()
+        if normalized_pair in GLOBAL_MACRO_SYMBOL_MAP:
+            return await self._get_macro_ohlc(normalized_pair, GLOBAL_MACRO_SYMBOL_MAP[normalized_pair], interval=interval)
+
         result = await self._public_request(
             "OHLC",
-            {"pair": pair, "interval": str(interval)},
+            {"pair": normalized_pair, "interval": str(interval)},
         )
         candles = next((value for key, value in result.items() if key != "last"), None)
         if not isinstance(candles, list) or not candles:

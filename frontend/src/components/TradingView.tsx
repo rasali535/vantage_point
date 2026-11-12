@@ -16,6 +16,8 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
   const majorPairs = [
     'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF',
     'EUR/GBP', 'EUR/JPY', 'EUR/CHF', 'EUR/AUD', 'EUR/CAD', 'AUD/JPY',
+    'XAU/USD', 'XAG/USD', 'XPT/USD', 'XCU/USD',
+    'SPX500/USD', 'NAS100/USD', 'US30/USD', 'UK100/USD', 'GER40/USD', 'JPN225/USD',
     'BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD', 'DOGE/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD', 'BCH/USD'
   ];
 
