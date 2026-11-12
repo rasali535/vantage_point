@@ -14,6 +14,8 @@ from agents.meta_ai import (
     MetaAIModelNotFoundError,
     MetaAIResponseError,
     MetaAITimeoutError,
+    completion_token_budget,
+    extract_message_text,
     normalize_meta_base_url,
     normalize_model_id,
     parse_model_catalog,
@@ -527,6 +529,147 @@ class MetaAIModelFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(diagnostic["http_status"], 403)
             self.assertEqual(diagnostic["code"], "forbidden")
             self.assertNotIn(self.test_key, str(status))
+
+
+class MetaAIResponseHandlingTests(unittest.TestCase):
+    def test_extract_message_text_from_string(self):
+        self.assertEqual(
+            extract_message_text({"content": "hi", "role": "assistant"}), "hi"
+        )
+
+    def test_extract_message_text_joins_blocks(self):
+        message = {
+            "content": [
+                {"type": "text", "text": "Hello "},
+                {"type": "text", "text": "world"},
+            ]
+        }
+        self.assertEqual(extract_message_text(message), "Hello world")
+
+    def test_extract_message_text_empty_when_missing(self):
+        self.assertEqual(extract_message_text({"content": None}), "")
+        self.assertEqual(extract_message_text({}), "")
+        self.assertEqual(extract_message_text(None), "")
+        self.assertEqual(extract_message_text({"content": [{"type": "image"}]}), "")
+
+    def test_completion_budget_defaults(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(completion_token_budget(), 8000)
+
+    def test_completion_budget_env_override_and_clamps(self):
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": "4000"}):
+            self.assertEqual(completion_token_budget(), 4000)
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": "garbage"}):
+            self.assertEqual(completion_token_budget(), 8000)
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": "1"}):
+            self.assertEqual(completion_token_budget(), 512)
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": "999999"}):
+            self.assertEqual(completion_token_budget(), 16000)
+
+
+class MetaAIContentResponseTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.test_key = "LLM_test_key_12345"
+        self.env_patch = patch.dict(os.environ, {"MODEL_API_KEY": self.test_key})
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+
+    def _models_response(self, client):
+        return httpx.Response(
+            status_code=200,
+            json={"object": "list", "data": [{"id": "muse-spark-1.3", "object": "model"}]},
+            request=httpx.Request("GET", f"{client.base_url}/models"),
+        )
+
+    def _chat_response(self, client, body):
+        return httpx.Response(
+            status_code=200,
+            json=body,
+            request=httpx.Request("POST", f"{client.base_url}/chat/completions"),
+        )
+
+    async def test_chat_joins_content_blocks(self):
+        client = MetaAIClient()
+        body = {
+            "id": "chatcmpl-blocks",
+            "object": "chat.completion",
+            "model": "muse-spark-1.3",
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Hello "},
+                        {"type": "text", "text": "world"},
+                    ],
+                },
+            }],
+        }
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client)
+            mock_post.return_value = self._chat_response(client, body)
+            self.assertEqual(await client.chat("muse-spark-1.3", "system", "user"), "Hello world")
+
+    async def test_chat_empty_content_reports_usage(self):
+        client = MetaAIClient()
+        body = {
+            "id": "chatcmpl-empty",
+            "object": "chat.completion",
+            "model": "muse-spark-1.3",
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"role": "assistant", "content": ""},
+            }],
+            "usage": {
+                "completion_tokens": 8000,
+                "completion_tokens_details": {"reasoning_tokens": 7990},
+            },
+        }
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client)
+            mock_post.return_value = self._chat_response(client, body)
+            with self.assertRaises(MetaAIResponseError) as ctx:
+                await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(ctx.exception.error_code, "empty_response")
+            self.assertIn("length", ctx.exception.message)
+            self.assertIn("7990", ctx.exception.message)
+            self.assertNotIn(self.test_key, ctx.exception.message)
+
+    async def test_chat_sends_default_budget(self):
+        client = MetaAIClient()
+        body = {
+            "id": "chatcmpl-ok",
+            "object": "chat.completion",
+            "model": "muse-spark-1.3",
+            "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "OK"}}],
+        }
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": ""}), \
+             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client)
+            mock_post.return_value = self._chat_response(client, body)
+            await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(mock_post.call_args[1]["json"]["max_completion_tokens"], 8000)
+
+    async def test_chat_sends_env_budget(self):
+        client = MetaAIClient()
+        body = {
+            "id": "chatcmpl-ok",
+            "object": "chat.completion",
+            "model": "muse-spark-1.3",
+            "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "OK"}}],
+        }
+        with patch.dict(os.environ, {"META_MAX_COMPLETION_TOKENS": "4000"}), \
+             patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+             patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_get.return_value = self._models_response(client)
+            mock_post.return_value = self._chat_response(client, body)
+            await client.chat("muse-spark-1.3", "system", "user")
+            self.assertEqual(mock_post.call_args[1]["json"]["max_completion_tokens"], 4000)
 
 
 if __name__ == "__main__":
