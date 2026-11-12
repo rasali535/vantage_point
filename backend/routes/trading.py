@@ -328,6 +328,71 @@ async def get_boardroom_history():
     return [serialize_document(item) for item in history]
 
 
+@router.get("/notifications")
+async def get_notifications(limit: int = 50):
+    db = await get_database()
+    safe_limit = max(1, min(100, limit))
+    notifs = await db.paper_notifications.find().sort("timestamp", -1).limit(safe_limit).to_list(length=safe_limit)
+    return [serialize_document(item) for item in notifs]
+
+
+class NotificationSettingsRequest(BaseModel):
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    webhook_url: str | None = None
+
+
+@router.get("/notifications/settings")
+async def get_notification_settings():
+    db = await get_database()
+    doc = await db.paper_runtime.find_one({"_id": "notification_settings"}) or {}
+    token = (doc.get("telegram_bot_token") or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    return {
+        "telegram_configured": bool(token and (doc.get("telegram_chat_id") or os.getenv("TELEGRAM_CHAT_ID"))),
+        "telegram_chat_id": doc.get("telegram_chat_id") or os.getenv("TELEGRAM_CHAT_ID") or "",
+        "telegram_bot_token_preview": (token[:4] + "..." + token[-4:]) if len(token) > 8 else ("configured" if token else ""),
+        "webhook_url": doc.get("webhook_url") or os.getenv("WEBHOOK_NOTIFICATION_URL") or "",
+        "browser_push_ready": True,
+    }
+
+
+@router.post("/notifications/settings")
+async def save_notification_settings(payload: NotificationSettingsRequest):
+    db = await get_database()
+    update_doc = {
+        "updated_at": utc_now(),
+    }
+    if payload.telegram_bot_token is not None:
+        update_doc["telegram_bot_token"] = payload.telegram_bot_token.strip()
+    if payload.telegram_chat_id is not None:
+        update_doc["telegram_chat_id"] = payload.telegram_chat_id.strip()
+    if payload.webhook_url is not None:
+        update_doc["webhook_url"] = payload.webhook_url.strip()
+    await db.paper_runtime.update_one({"_id": "notification_settings"}, {"$set": update_doc}, upsert=True)
+    return {"status": "saved", "settings": await get_notification_settings()}
+
+
+@router.post("/notifications/test")
+async def send_test_notification():
+    db = await get_database()
+    test_notif = {
+        "_id": f"notif:test:{uuid.uuid4().hex[:8]}",
+        "id": uuid.uuid4().hex[:8],
+        "title": "⚡ Vantage Point Test Alert",
+        "body": "Autonomous scalper alerts are connected. You will receive live notifications when the bot buys, sells, or banks profit.",
+        "type": "test",
+        "pair": "XAU/USD",
+        "side": "BUY",
+        "price": "3880.00",
+        "quantity": "0.005",
+        "timestamp": utc_now(),
+    }
+    await db.paper_notifications.insert_one(test_notif)
+    from paper_trading.autopilot import _dispatch_external_push
+    await _dispatch_external_push(db, test_notif)
+    return {"status": "sent", "notification": serialize_document(test_notif)}
+
+
 async def scan_and_analyze(pair: str | None = None) -> Dict[str, Any]:
     # Database availability is a prerequisite for an auditable scan.
     db = await get_database()

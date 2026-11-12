@@ -188,6 +188,93 @@ async def _record_event(db, event: dict) -> None:
         except Exception:
             pass
 
+    notif_col = getattr(db, "paper_notifications", None)
+    if notif_col is not None and event.get("pair") and event.get("side"):
+        try:
+            side_up = str(event["side"]).upper()
+            pair_name = str(event["pair"])
+            pnl_val = event.get("realized_pnl_usd")
+            ev_type = str(event.get("event_type", "paper_fill"))
+            if side_up == "BUY":
+                title = f"⚡ Scalp BUY Opened: {pair_name}"
+                body = (
+                    f"Bought {event.get('quantity')} {pair_name} @ ${event.get('fill_price')} "
+                    f"({event.get('timeframe', '1m/5m')} scalp · Stop ${event.get('stop_loss', 'auto')} · Target ${event.get('take_profit', 'auto')})"
+                )
+                ntype = "buy"
+            elif pnl_val is not None and float(pnl_val) >= 0:
+                title = f"💰 Profit Banked: {pair_name} (+${float(pnl_val):.2f})"
+                body = (
+                    f"Closed {event.get('quantity')} {pair_name} @ ${event.get('fill_price')} · "
+                    f"Realized P&L +${float(pnl_val):.2f} ({ev_type.replace('_', ' ')})"
+                )
+                ntype = "profit"
+            else:
+                pnl_str = f"${float(pnl_val):.2f}" if pnl_val is not None else "closed"
+                title = f"🛡️ Position Closed: {pair_name} ({pnl_str})"
+                body = (
+                    f"Sold {event.get('quantity')} {pair_name} @ ${event.get('fill_price')} "
+                    f"({event.get('triggered_by') or ev_type.replace('_', ' ')})"
+                )
+                ntype = "stop"
+
+            notif_doc = {
+                "_id": f"notif:{record_id}",
+                "id": record_id,
+                "title": title,
+                "body": body,
+                "type": ntype,
+                "pair": pair_name,
+                "side": side_up,
+                "price": event.get("fill_price"),
+                "quantity": event.get("quantity"),
+                "realized_pnl_usd": pnl_val,
+                "event_type": ev_type,
+                "timestamp": timestamp,
+            }
+            await notif_col.insert_one(notif_doc)
+            await _dispatch_external_push(db, notif_doc)
+        except Exception:
+            pass
+
+
+async def _dispatch_external_push(db, notif: dict) -> None:
+    """Send optional Telegram or Webhook push alert when a trade executes in the background."""
+    import httpx
+    cfg = {}
+    try:
+        runtime_col = getattr(db, "paper_runtime", None)
+        if runtime_col is not None:
+            cfg = await runtime_col.find_one({"_id": "notification_settings"}) or {}
+    except Exception:
+        cfg = {}
+
+    tg_token = (cfg.get("telegram_bot_token") or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    tg_chat = (cfg.get("telegram_chat_id") or os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    webhook_url = (cfg.get("webhook_url") or os.getenv("WEBHOOK_NOTIFICATION_URL") or "").strip()
+
+    if not tg_token and not webhook_url:
+        return
+
+    text_msg = f"{notif.get('title')}\n{notif.get('body')}\nTime: {notif.get('timestamp')}"
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        if tg_token and tg_chat:
+            try:
+                await client.post(
+                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    json={"chat_id": tg_chat, "text": text_msg},
+                )
+            except Exception:
+                pass
+        if webhook_url:
+            try:
+                await client.post(
+                    webhook_url,
+                    json={"content": text_msg, "text": text_msg, "notification": notif},
+                )
+            except Exception:
+                pass
+
 
 async def _acquire_worker_lease(db) -> bool:
     now = _utcnow()
@@ -558,10 +645,11 @@ async def _execute_signal(
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        # Tight 1m/5m scalp stop & quick-harvest target
-        stop_distance = max(D(str(atr_val)) * D("1.0"), entry_estimate * D("0.0012"))
+        # Buffered 1m/5m scalp stop & net-positive quick-harvest target
+        stop_distance = max(D(str(atr_val)) * D("1.4"), entry_estimate * D("0.0025"))
         stop = entry_estimate - stop_distance
-        target = entry_estimate + stop_distance * D("1.45")
+        target_distance = max(stop_distance * D("1.65"), entry_estimate * D("0.0032"))
+        target = entry_estimate + target_distance
         policy = RiskPolicy.from_env()
         if policy is None:
             return {"pair": pair, "decision": "REJECTED", "reason": "Risk policy is missing or invalid."}
@@ -611,8 +699,18 @@ async def _execute_signal(
     if action == TradeAction.SELL and current:
         if technical_signal != TradeAction.SELL:
             return {"pair": pair, "decision": "HOLD", "reason": "Technical exit confirmation missing."}
-        quantity = D(str(current["quantity"]))
         price = D(str(ticker["last"]))
+        avg_entry = D(str(current.get("average_entry", "0")))
+        # Do not close on an indicator reversal if the position is flat or slightly negative
+        # (let protective stop_loss / take_profit manage the trade instead of churning fees).
+        if avg_entry > 0 and price < avg_entry * D("1.0010"):
+            return {
+                "pair": pair,
+                "decision": "HOLD",
+                "reason": "Position held; awaiting net-profitable target or protective stop.",
+                "analysis": analysis,
+            }
+        quantity = D(str(current["quantity"]))
         updated, fill = simulate_order(
             account,
             pair=pair,
@@ -792,11 +890,26 @@ async def run_autopilot_once(db=None) -> dict:
 
 
 async def _worker_loop() -> None:
+    import httpx
     monitor_interval = max(5, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "10"))))
     scan_interval = max(15, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "30"))))
+    keepalive_url = (
+        os.getenv("RENDER_EXTERNAL_URL")
+        or os.getenv("PUBLIC_BACKEND_URL")
+        or "https://vantage-point-1qv7.onrender.com"
+    ).rstrip("/") + "/health"
     last_scan: float | None = None
+    last_keepalive: float = 0.0
     while True:
         try:
+            now_loop = asyncio.get_running_loop().time()
+            if now_loop - last_keepalive >= 240.0:
+                last_keepalive = now_loop
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as ka_client:
+                        await ka_client.get(keepalive_url)
+                except Exception:
+                    pass
             if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
                 await asyncio.sleep(monitor_interval)
                 continue

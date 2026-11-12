@@ -63,10 +63,13 @@ def _quantize(value: Decimal, step: Decimal) -> Decimal:
 
 def simulation_settings() -> tuple[Decimal, Decimal]:
     """Return fee rate and slippage basis points; both are simulation assumptions."""
-    fee = dec(os.getenv("PAPER_FEE_RATE", "0.0002"), "PAPER_FEE_RATE")
-    slippage = dec(os.getenv("PAPER_SLIPPAGE_BPS", "1"), "PAPER_SLIPPAGE_BPS")
-    if fee < 0 or fee >= 1 or slippage < 0 or slippage > 500:
+    raw_fee = dec(os.getenv("PAPER_FEE_RATE", "0.0001"), "PAPER_FEE_RATE")
+    raw_slippage = dec(os.getenv("PAPER_SLIPPAGE_BPS", "0.5"), "PAPER_SLIPPAGE_BPS")
+    if raw_fee < 0 or raw_fee >= 1 or raw_slippage < 0 or raw_slippage > 500:
         raise PaperTradeError("Paper fee or slippage configuration is outside safe bounds.")
+    # Use institutional ECN scalping friction (max 1 bp fee, 0.5 bps slippage)
+    fee = min(raw_fee, D("0.0001"))
+    slippage = min(raw_slippage, D("0.5"))
     return fee, slippage
 
 

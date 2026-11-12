@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCcw, LayoutDashboard, Bot, Activity, Users, Shield, Smartphone, Tablet, Monitor } from 'lucide-react';
+import { RefreshCcw, LayoutDashboard, Bot, Activity, Users, Shield, Smartphone, Tablet, Monitor, Bell } from 'lucide-react';
 
 import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
@@ -7,6 +7,7 @@ import ChatBot from './components/ChatBot';
 import { API_BASE_URL } from './config';
 import PaperTrading from './pages/PaperTrading';
 import MirofishTerminal from './components/MirofishTerminal';
+import { NotificationCenter } from './components/NotificationCenter';
 
 export const FOREX_PAIRS = [
   'EUR/USD',
@@ -157,6 +158,9 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'terminal' | 'paper' | 'trading' | 'boardroom' | 'audit'>('terminal');
   const [viewportMode, setViewportMode] = useState<'auto' | 'tablet' | 'mobile'>('auto');
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const [seenNotifIds, setSeenNotifIds] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<any>(null);
   const [deliberations, setDeliberations] = useState<any[]>([]);
   const [boardroomLoading, setBoardroomLoading] = useState(true);
@@ -198,6 +202,44 @@ const App: React.FC = () => {
     } finally {
       setBoardroomLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let initialLoad = true;
+    const checkNotifications = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/trading/notifications?limit=20`);
+        if (!res.ok) return;
+        const list: any[] = await res.json();
+        if (Array.isArray(list)) {
+          setNotifCount(list.length);
+          if (!initialLoad && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            for (const n of list) {
+              if (n?.id && !seenNotifIds.has(n.id)) {
+                try {
+                  new Notification(n.title || '⚡ Vantage Point Trade Alert', {
+                    body: n.body || `Simulated ${n.side} ${n.pair}`,
+                    icon: '/favicon.svg',
+                  });
+                } catch {
+                  // silent
+                }
+              }
+            }
+          }
+          const nextSet = new Set<string>();
+          list.forEach((n) => { if (n?.id) nextSet.add(n.id); });
+          setSeenNotifIds(nextSet);
+          initialLoad = false;
+        }
+      } catch {
+        // silent
+      }
+    };
+
+    void checkNotifications();
+    const interval = window.setInterval(checkNotifications, 12000);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -272,6 +314,7 @@ const App: React.FC = () => {
   return (
     <div className={`mf-shell ${viewportMode === 'mobile' ? 'mf-force-mobile' : viewportMode === 'tablet' ? 'mf-force-tablet' : ''}`}>
       <ChatBot />
+      <NotificationCenter isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
 
       <div className="mf-container">
         {/* ===================================================================
@@ -396,6 +439,16 @@ const App: React.FC = () => {
                 BOT ${paperEquity.toFixed(2)} ({paperPnl >= 0 ? '+' : ''}${paperPnl.toFixed(2)})
               </button>
             )}
+
+            <button
+              type="button"
+              className="mf-bell-btn"
+              onClick={() => setIsNotifOpen(true)}
+              title="Trade notifications & phone push alerts"
+            >
+              <Bell size={14} />
+              {notifCount > 0 && <span className="mf-bell-badge">{notifCount}</span>}
+            </button>
 
             <span className="mf-status-live mf-hide-xs">
               <i /> LIVE · 1M/5M SCALP

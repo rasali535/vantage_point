@@ -1858,3 +1858,107 @@ a {
     height: min(72vh, 520px) !important;
   }
 }
+
+/* ============================================================================
+   NOTIFICATION BELL & MODAL DIALOG
+   ============================================================================ */
+.mf-bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mf-bell-btn:hover {
+  background: #111827;
+  color: #ffffff;
+}
+
+.mf-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #2563eb;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 5px;
+  line-height: 1.2;
+}
+
+.mf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.mf-modal-dialog {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
+  animation: fade-in 0.2s ease-out;
+  overflow: hidden;
+}
+
+.mf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid #eef2f6;
+  background: #fafbfc;
+}
+
+.mf-modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.mf-channel-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .mf-channel-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mf-notif-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mf-notif-item {
+  transition: background 0.15s ease;
+}
+
+.mf-notif-item:hover {
+  background: #f8fafc;
+}
