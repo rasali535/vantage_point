@@ -7,7 +7,6 @@ from fastapi import HTTPException
 import database
 from agents.kraken import KrakenAgent
 from agents.meta_ai import MetaAIClient
-from agents.transcription import SpeechmaticsAgent
 from decimal import Decimal
 from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
 from routes.trading import manual_trade
@@ -54,12 +53,6 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
             agent = MetaAIClient()
             with self.assertRaisesRegex(RuntimeError, "not configured"):
                 await agent.chat("muse-spark-1.3", "system", "user")
-
-    async def test_transcription_does_not_return_mock_text(self):
-        with patch.dict(os.environ, {"SPEECHMATICS_API_KEY": ""}):
-            agent = SpeechmaticsAgent()
-            with self.assertRaisesRegex(RuntimeError, "not configured"):
-                await agent.transcribe("/tmp/nonexistent-audio.wav")
 
     def test_risk_engine_rejects_when_policy_is_missing(self):
         proposal = OrderProposal(

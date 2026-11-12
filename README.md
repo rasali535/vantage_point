@@ -43,7 +43,6 @@ Set secrets in Vercel project environment settings, not in source files.
 | `RESEARCH_MODEL` | Market intelligence model; defaults to Meta `muse-spark-1.3` |
 | `RISK_MODEL` | Risk analysis model; defaults to Meta `muse-spark-1.3` |
 | `TRADING_MODEL` | Strategy synthesis model; defaults to Meta `muse-spark-1.3` |
-| `SPEECHMATICS_API_KEY` | Optional audio transcription provider key |
 | `RISK_MAX_TRADE_RISK_PCT` | Operator-defined maximum stop-loss risk per proposed trade |
 | `RISK_MAX_DAILY_LOSS_PCT` | Operator-defined daily loss ceiling |
 | `RISK_MAX_DRAWDOWN_PCT` | Operator-defined maximum drawdown |
@@ -72,7 +71,7 @@ The default database name remains `action_pilot` to preserve the existing collec
 
 ## Meta AI provider
 
-All AI chat, market research, risk analysis, strategy synthesis and meeting-note analysis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.
+All AI chat, market research, risk analysis and strategy synthesis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.
 
 ## Kraken adapter
 
@@ -80,7 +79,7 @@ Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private
 
 ## Trading safety requirements
 
-Meta Model API and transcription provider failures are returned as service errors; no synthetic analysis or transcript is substituted. The platform runs in **research + optional paper-simulation mode**. Live execution remains disabled. Paper simulation is disabled unless `PAPER_TRADING_ENABLED=true`, `PAPER_API_TOKEN` and `PAPER_INITIAL_BALANCE_USD` are configured. The `/api/trading/paper/account`, `/api/trading/paper/orders` GET/POST and `/api/trading/paper/monitor` POST routes require the `X-Paper-Token` header. Paper fills use the latest public Kraken ticker, configurable fee and slippage assumptions, and a single MongoDB account document with optimistic version checks. Paper BUY orders require a configured deterministic risk policy and a stop-loss when policy requires one. Spot SELL orders can only reduce an existing virtual position; shorting is rejected. Simulated fills are marked `execution_mode=paper` and `exchange_order_submitted=false`. The paper engine does not call Kraken private endpoints or order placement.
+Meta Model API failures are returned as service errors; no synthetic analysis is substituted. The platform runs in **research + optional paper-simulation mode**. Live execution remains disabled. Paper simulation is disabled unless `PAPER_TRADING_ENABLED=true`, `PAPER_API_TOKEN` and `PAPER_INITIAL_BALANCE_USD` are configured. The `/api/trading/paper/account`, `/api/trading/paper/orders` GET/POST and `/api/trading/paper/monitor` POST routes require the `X-Paper-Token` header. Paper fills use the latest public Kraken ticker, configurable fee and slippage assumptions, and a single MongoDB account document with optimistic version checks. Paper BUY orders require a configured deterministic risk policy and a stop-loss when policy requires one. Spot SELL orders can only reduce an existing virtual position; shorting is rejected. Simulated fills are marked `execution_mode=paper` and `exchange_order_submitted=false`. The paper engine does not call Kraken private endpoints or order placement.
 
 The Paper Trading workspace displays virtual equity, cash, positions and simulated fills. Its authenticated autonomous supervisor can analyse configured Kraken USD-quoted spot pairs, calculate a risk-sized position, simulate entries, close a held position on a confirmed opposite signal, and monitor stored stop-loss/take-profit exits. Start/stop controls are protected by the paper token. Stopping the supervisor blocks new entries while continuing protective monitoring for already-open virtual positions. The worker uses a MongoDB lease to reduce duplicate execution across API instances. The current worker runs inside the FastAPI process; a Render Free web service may sleep while idle, so reliable continuous operation requires an always-on deployment. This phase does not yet automate Forex pairs; the multi-market FX adapter and FX-specific sizing must be completed first. Before any live execution can be enabled, the following must be implemented and tested:
 

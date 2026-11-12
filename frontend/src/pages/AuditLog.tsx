@@ -83,13 +83,13 @@ const AuditLog = () => {
               </div>
               
               <div style={{ 
-                background: 'rgba(0,0,0,0.2)', 
+                background: '#f4f6f9', 
                 padding: '1rem', 
                 borderRadius: '8px', 
                 fontSize: '0.9rem', 
                 color: 'var(--text-muted)',
                 lineHeight: 1.6,
-                borderLeft: '2px solid var(--primary)'
+                border: '1px solid rgba(36, 86, 230, 0.3)'
               }}>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text)', fontWeight: 500 }}>
                   <ShieldCheck size={16} /> Agent Reasoning

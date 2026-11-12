@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Activity, Bot, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, Bot, Clock, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 type Position = {
@@ -45,15 +45,33 @@ type Account = {
   exchange_order_submitted: boolean;
 };
 
+type LatestAnalysis = {
+  pair: string;
+  action: string;
+  confidence: number | null;
+  timestamp: string;
+  reasoning: string;
+  rsi_14?: number | null;
+  trend?: string | null;
+};
+
 const money = (value: string | number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 
 const PaperTrading: React.FC = () => {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem('paper_trading_token') || '';
+    } catch {
+      return '';
+    }
+  });
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
   const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRun[]>([]);
+  const [latestAnalysis, setLatestAnalysis] = useState<LatestAnalysis | null>(null);
+  const [utcNow, setUtcNow] = useState('');
   const [pair, setPair] = useState('BTC/USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('0.001');
@@ -78,6 +96,28 @@ const PaperTrading: React.FC = () => {
   }, [token]);
 
   const refresh = useCallback(async (silent = false) => {
+    try {
+      const boardroomRes = await fetch(`${API_BASE_URL}/api/trading/boardroom`);
+      const boardroom = boardroomRes.ok ? await boardroomRes.json() : [];
+      const latest = Array.isArray(boardroom) && boardroom.length ? boardroom[boardroom.length - 1] : null;
+      if (!latest) {
+        setLatestAnalysis(null);
+      } else {
+        const strategy = latest.strategy || {};
+        const technical = latest.technical_analysis || {};
+        setLatestAnalysis({
+          pair: latest.pair || latest.symbol || '—',
+          action: String(strategy.action || latest.action || 'HOLD').toUpperCase(),
+          confidence: typeof strategy.confidence === 'number' ? strategy.confidence : null,
+          timestamp: latest.timestamp || '',
+          reasoning: String(strategy.rationale || latest.reasoning || 'No reasoning provided.'),
+          rsi_14: typeof technical.rsi_14 === 'number' ? technical.rsi_14 : null,
+          trend: typeof technical.trend === 'string' ? technical.trend : null,
+        });
+      }
+    } catch {
+      setLatestAnalysis(null);
+    }
     if (!token.trim()) {
       if (!silent) setError('Enter the paper-trading access token configured by the operator.');
       return;
@@ -95,6 +135,11 @@ const PaperTrading: React.FC = () => {
       setOrders(Array.isArray(history) ? history : []);
       setAutopilot(autoStatus);
       setAutopilotRuns(Array.isArray(autoRuns) ? autoRuns : []);
+      try {
+        localStorage.setItem('paper_trading_token', token);
+      } catch {
+        // Private browsing: the token simply won't persist.
+      }
       if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
@@ -108,6 +153,18 @@ const PaperTrading: React.FC = () => {
     const timer = window.setInterval(() => { void refresh(true); }, 30000);
     return () => window.clearInterval(timer);
   }, [autopilot?.enabled, token, refresh]);
+
+  useEffect(() => {
+    if (token.trim()) void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const tick = () => setUtcNow(`${new Date().toISOString().slice(11, 19)} UTC`);
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
 
   const toggleAutopilot = async () => {
@@ -172,6 +229,15 @@ const PaperTrading: React.FC = () => {
   };
 
   const pnlValue = Number(account?.realized_pnl || 0);
+  const fills = orders;
+  const buyCount = fills.filter((o: any) => o.side === 'BUY').length;
+  const sellCount = fills.filter((o: any) => o.side === 'SELL').length;
+  const totalFees = fills.reduce((sum: number, o: any) => sum + Number(o.fee_usd || 0), 0);
+  const avgGross = fills.length ? fills.reduce((sum: number, o: any) => sum + Number(o.gross_usd || 0), 0) / fills.length : 0;
+  const topFill: any = fills.reduce((best: any, o: any) => (Number(o?.gross_usd || 0) > Number(best?.gross_usd || 0) ? o : best), null);
+  const tape = [...fills].reverse().slice(-24);
+  const maxTapeGross = tape.reduce((m: number, o: any) => Math.max(m, Number(o.gross_usd || 0)), 0);
+  const exposure = (account?.positions || []).map((p: Position) => ({ pair: p.pair, value: Number(p.market_value || 0) }));
   const stats = [
     { label: 'Portfolio equity', value: account ? money(account.equity) : '—', sub: account ? `${account.order_count} simulated fills` : 'Connect to load', main: true, tone: '' },
     { label: 'Virtual cash', value: account ? money(account.cash) : '—', sub: account?.currency || 'USD', main: false, tone: '' },
@@ -184,9 +250,13 @@ const PaperTrading: React.FC = () => {
       <div className="pb-topbar">
         <div>
           <div className="pb-title"><Activity size={22} /> Paper Trading</div>
-          <div className="pb-sub">Real Kraken public prices · Virtual USD funds · No live orders</div>
+          <div className="pb-sub">MUSE SPARK · KRAKEN SPOT · VIRTUAL USD · NO LIVE ORDERS</div>
         </div>
-        <span className="pb-live"><i />SIMULATION</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="pb-live"><i />SIMULATION</span>
+          <span className="pb-chip">FILL #{(account?.order_count ?? 0) + 1}</span>
+          <span className="pb-chip"><Clock size={12} style={{ verticalAlign: -1 }} /> {utcNow || '—'}</span>
+        </div>
       </div>
 
       <div className="pb-panel" style={{ marginBottom: 12 }}>
@@ -211,49 +281,70 @@ const PaperTrading: React.FC = () => {
         ))}
       </div>
 
-      <div className="pb-section-title"><Bot size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Autonomous paper trader</div>
-      <div className="pb-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span className={`pb-pill${autopilot?.enabled ? ' pb-pill-on' : ''}`}>
-            {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
-          </span>
-          <button className={autopilot?.enabled ? 'pb-btn pb-btn-ghost' : 'pb-btn'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
-            {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
-          </button>
+      <div className="pb-taperow">
+        <div className="pb-panel">
+          <div className="pb-mini">Fill tape · last {tape.length} simulated fills</div>
+          {!tape.length ? <span className="pb-muted">No fills yet. Simulated orders will appear here as bars.</span> : (
+            <div className="pb-tape">
+              <div className="pb-tape-stats">
+                <div><span>Fills</span><strong>{fills.length}</strong></div>
+                <div><span>Buys / sells</span><strong>{buyCount} / {sellCount}</strong></div>
+                <div><span>Fees paid</span><strong>{money(totalFees)}</strong></div>
+                <div><span>Avg fill</span><strong>{money(avgGross)}</strong></div>
+              </div>
+              <div>
+                <div className="pb-bars">
+                  {tape.map((o: any) => (
+                    <div
+                      key={o.idempotency_key}
+                      className={`pb-bar${o.side === 'SELL' ? ' sell' : ''}`}
+                      style={{ height: `${maxTapeGross > 0 ? Math.max(6, (Number(o.gross_usd || 0) / maxTapeGross) * 100) : 0}%` }}
+                      title={`${o.side} ${o.quantity} ${o.pair} @ ${o.fill_price}`}
+                    />
+                  ))}
+                </div>
+                <div className="pb-muted">Oldest → newest · blue BUY · red SELL · height ∝ notional</div>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="pb-muted" style={{ marginTop: 10 }}>
-          {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
-        </div>
-        {autopilot && !autopilot.worker_running && <div className="pb-alert pb-alert-error" style={{ marginTop: 10, marginBottom: 0 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</div>}
-        <div className="pb-muted" style={{ marginTop: 10 }}>
-          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
+        <div className="pb-panel">
+          <div className="pb-mini">Top fill</div>
+          {!topFill ? <span className="pb-muted">No fills yet.</span> : (
+            <>
+              <div className="pb-topfill-value">{money(topFill.gross_usd)}</div>
+              <div className="pb-muted">{topFill.side} {topFill.quantity} {topFill.pair}</div>
+              <div className="pb-muted">@ {money(topFill.fill_price)} · fee {money(topFill.fee_usd)}</div>
+              <div className="pb-muted">{topFill.timestamp ? new Date(topFill.timestamp).toLocaleString() : ''}</div>
+            </>
+          )}
+          <div className="pb-mini" style={{ marginTop: 16 }}>Exposure by pair</div>
+          {!exposure.length ? <span className="pb-muted">No open positions.</span> : (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {exposure.map((e: { pair: string; value: number }) => (
+                <span className="pb-chip" key={e.pair}>{e.pair} · {money(e.value)}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="pb-section-title">Autonomous analysis history</div>
+      <div className="pb-section-title">Latest analysis pulse</div>
       <div className="pb-panel">
-        {!autopilotRuns.length ? <span className="pb-muted">No autonomous analysis cycles recorded yet.</span> : (
-          <div>
-            {autopilotRuns.slice(0, 5).map((run, index) => (
-              <div key={`${run.timestamp}-${index}`} className="pb-run">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                  <strong>{new Date(run.timestamp).toLocaleString()}</strong>
-                  <span className="pb-muted" style={{ fontSize: 12 }}>{run.status}</span>
-                </div>
-                {run.results?.map((item, itemIndex) => (
-                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-                    <span>{item.pair} · {item.decision}</span>
-                    <span className="pb-muted">{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
-                  </div>
-                ))}
-                {run.protective_exits?.map((item, itemIndex) => (
-                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6 }}>
-                    Protective exit: {item.pair} · {item.triggered_by || 'triggered'} · {item.fill_price || ''}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+        {!latestAnalysis ? <span className="pb-muted">No boardroom analysis recorded yet. Run a market scan.</span> : (
+          <>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              <strong style={{ fontSize: 16 }}>{latestAnalysis.pair}</strong>
+              <span className={`pb-act pb-act-${latestAnalysis.action}`}>{latestAnalysis.action}</span>
+              <span className="pb-muted">{latestAnalysis.confidence !== null ? `${Math.round(latestAnalysis.confidence * 100)}% confidence` : 'confidence —'}</span>
+              <span className="pb-muted">{latestAnalysis.timestamp ? new Date(latestAnalysis.timestamp).toLocaleString() : ''}</span>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.65 }}>{latestAnalysis.reasoning}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              {latestAnalysis.rsi_14 !== null && latestAnalysis.rsi_14 !== undefined && <span className="pb-chip">RSI14 {latestAnalysis.rsi_14.toFixed(1)}</span>}
+              {latestAnalysis.trend && <span className="pb-chip">{latestAnalysis.trend}</span>}
+            </div>
+          </>
         )}
       </div>
 
@@ -313,8 +404,59 @@ const PaperTrading: React.FC = () => {
           </table>
         )}
       </div>
-      <div className="pb-muted" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ShieldCheck size={14} /> Live execution is disabled. Every fill is simulated; no Kraken private trading endpoint is called.
+
+      <div className="pb-section-title"><Bot size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Autonomous paper trader</div>
+      <div className="pb-panel">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span className={`pb-pill${autopilot?.enabled ? ' pb-pill-on' : ''}`}>
+            {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
+          </span>
+          <button className={autopilot?.enabled ? 'pb-btn pb-btn-ghost' : 'pb-btn'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
+            {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
+          </button>
+        </div>
+        <div className="pb-muted" style={{ marginTop: 10 }}>
+          {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+        </div>
+        {autopilot && !autopilot.worker_running && <div className="pb-alert pb-alert-error" style={{ marginTop: 10, marginBottom: 0 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</div>}
+        <div className="pb-muted" style={{ marginTop: 10 }}>
+          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
+        </div>
+      </div>
+
+      <div className="pb-section-title">Autonomous analysis history</div>
+      <div className="pb-panel">
+        {!autopilotRuns.length ? <span className="pb-muted">No autonomous analysis cycles recorded yet.</span> : (
+          <div>
+            {autopilotRuns.slice(0, 5).map((run, index) => (
+              <div key={`${run.timestamp}-${index}`} className="pb-run">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>{new Date(run.timestamp).toLocaleString()}</strong>
+                  <span className="pb-muted" style={{ fontSize: 12 }}>{run.status}</span>
+                </div>
+                {run.results?.map((item, itemIndex) => (
+                  <div key={`${item.pair}-${itemIndex}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                    <span>{item.pair} · {item.decision}</span>
+                    <span className="pb-muted">{item.fill ? `${item.fill.side} ${item.fill.quantity} @ ${item.fill.fill_price}` : item.reason || 'No action'}</span>
+                  </div>
+                ))}
+                {run.protective_exits?.map((item, itemIndex) => (
+                  <div key={`exit-${item.pair}-${itemIndex}`} style={{ marginTop: 6 }}>
+                    Protective exit: {item.pair} · {item.triggered_by || 'triggered'} · {item.fill_price || ''}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="pb-foot">
+        <span>MODE PAPER</span>
+        <span>WORKER {autopilot ? (autopilot.worker_running ? 'ONLINE' : 'OFFLINE') : '—'}</span>
+        <span>MARKETS {(autopilot?.pairs || []).join(', ') || '—'}</span>
+        <span>{account ? `${account.order_count} FILLS` : 'NOT CONNECTED'}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><ShieldCheck size={12} /> EXECUTION DISABLED</span>
       </div>
     </div>
   );

@@ -28,7 +28,7 @@ const BoardroomCouncil = ({ decision, scanning }: CouncilProps) => {
           .spinner-small {
             width: 20px;
             height: 20px;
-            border: 2px solid rgba(255,255,255,0.1);
+            border: 2px solid rgba(16,24,40,0.12);
             border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -60,7 +60,7 @@ const BoardroomCouncil = ({ decision, scanning }: CouncilProps) => {
         <span className="badge">Recommendation only</span>
       </div>
 
-      <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '8px', borderLeft: '4px solid var(--primary)' }}>
+      <div style={{ padding: '1rem', background: 'rgba(36, 86, 230, 0.06)', borderRadius: '8px', border: '1px solid rgba(36, 86, 230, 0.3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase' }}>
           <Brain size={14} /> Proposed action: {decision.action || 'HOLD'}
         </div>
@@ -70,15 +70,15 @@ const BoardroomCouncil = ({ decision, scanning }: CouncilProps) => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-        <div style={{ padding: '0.85rem', background: 'rgba(255,255,255,0.025)', borderRadius: '8px' }}>
+        <div style={{ padding: '0.85rem', background: '#f4f6f9', borderRadius: '8px' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.35rem' }}>Model risk score</div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{decision.risk_score ?? '—'}<span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/100</span></div>
         </div>
-        <div style={{ padding: '0.85rem', background: 'rgba(255,255,255,0.025)', borderRadius: '8px' }}>
+        <div style={{ padding: '0.85rem', background: '#f4f6f9', borderRadius: '8px' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.35rem' }}>Model confidence</div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{typeof decision.confidence === 'number' ? `${Math.round(decision.confidence * 100)}%` : '—'}</div>
         </div>
-        <div style={{ padding: '0.85rem', background: 'rgba(255,255,255,0.025)', borderRadius: '8px' }}>
+        <div style={{ padding: '0.85rem', background: '#f4f6f9', borderRadius: '8px' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.35rem' }}>Signal quality</div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700, color: qualityColor }}>{signalQuality !== undefined ? `${signalQuality}%` : '—'}</div>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{decision.whipsaw_risk || 'Not available'}</div>
