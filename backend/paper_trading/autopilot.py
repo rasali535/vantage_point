@@ -342,8 +342,8 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
                 prices[p] = val
 
     # Dynamic profit-locking trailing stop for 1m/5m scalping:
-    # as soon as a position moves +0.08% into profit, ratchet stop_loss above
-    # average_entry (+0.04% covers round-trip fees); at +0.18% trail tightly at -0.08%.
+    # as soon as a position moves +0.06% into profit, ratchet stop_loss above
+    # average_entry (+0.03% covers round-trip fees); at +0.14% trail tightly at -0.07%.
     stops_ratcheted = False
     for pair, pos in working.get("positions", {}).items():
         mark = prices.get(pair)
@@ -355,12 +355,12 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
         current_stop = D(str(pos["stop_loss"])) if pos.get("stop_loss") else D("0")
         gain_pct = (mark - avg_entry) / avg_entry * D("100")
         new_stop = None
-        if gain_pct >= D("0.18"):
-            candidate = (mark * D("0.9992")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        if gain_pct >= D("0.14"):
+            candidate = (mark * D("0.9993")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
-        elif gain_pct >= D("0.08"):
-            candidate = (avg_entry * D("1.0004")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        elif gain_pct >= D("0.06"):
+            candidate = (avg_entry * D("1.0003")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
         if new_stop is not None:
@@ -660,13 +660,13 @@ async def _execute_signal(
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        # Buffered 1m/5m scalp stop & net-positive quick-harvest target
-        stop_distance = max(D(str(atr_val)) * D("1.4"), entry_estimate * D("0.0025"))
+        # Buffered 1m/5m scalp stop & brisk net-positive quick-harvest target
+        stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         stop = entry_estimate - stop_distance
-        target_distance = max(stop_distance * D("1.65"), entry_estimate * D("0.0032"))
+        target_distance = max(stop_distance * D("1.35"), entry_estimate * D("0.0022"))
         target = entry_estimate + target_distance
         policy = _active_risk_policy()
-        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "24"))
+        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "18"))
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
