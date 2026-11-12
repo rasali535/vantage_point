@@ -726,6 +726,39 @@ async def start_paper_autopilot(x_paper_token: str | None = Header(default=None)
         raise HTTPException(status_code=423, detail=str(exc)) from exc
 
 
+class PaperResetRequest(BaseModel):
+    initial_balance_usd: str = Field(default="100.00", min_length=1, max_length=32)
+    run_cycle: bool = Field(default=True)
+
+
+@router.post("/paper/reset")
+async def reset_paper_account(payload: PaperResetRequest | None = None, x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    balance_str = payload.initial_balance_usd if payload else "100.00"
+    run_cycle = payload.run_cycle if payload is not None else True
+    try:
+        fresh = initial_account(balance_str)
+        fields = {k: v for k, v in fresh.items() if k != "_id"}
+        await db.paper_accounts.update_one({"_id": "default"}, {"$set": fields}, upsert=True)
+        await db.paper_autopilot_runs.delete_many({})
+        await db.paper_autopilot_events.delete_many({})
+        await db.trading_ledger.delete_many({"execution_mode": "paper"})
+        cycle_result = None
+        if run_cycle:
+            await set_autopilot_enabled(db, True)
+            cycle_result = await run_autopilot_once(db)
+        saved = await db.paper_accounts.find_one({"_id": "default"}) or fresh
+        return {
+            "account": account_summary(saved),
+            "cycle": cycle_result,
+            "execution_mode": "paper",
+            "exchange_order_submitted": False,
+        }
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/paper/autopilot/run")
 async def run_paper_autopilot_now(x_paper_token: str | None = Header(default=None)):
     _require_paper_access(x_paper_token)

@@ -221,14 +221,50 @@ async def _release_worker_lease(db) -> None:
 
 
 async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str, Decimal], list[dict]]:
+    from copy import deepcopy
     original = account
-    working = dict(account)
+    working = deepcopy(account)
     prices: dict[str, Decimal] = {}
-    for pair in account.get("positions", {}).keys():
-        ticker = await _market.get_ticker(pair)
-        prices[pair] = D(str(ticker["last"]))
+    held_pairs = list(account.get("positions", {}).keys())
+    if held_pairs:
+        async def _fetch_price(p: str):
+            try:
+                t = await _market.get_ticker(p)
+                return p, D(str(t["last"]))
+            except Exception:
+                return p, None
 
-    equity = account_equity(account, prices)
+        fetched = await asyncio.gather(*(_fetch_price(p) for p in held_pairs))
+        for p, val in fetched:
+            if val is not None and val > 0:
+                prices[p] = val
+
+    # Dynamic profit-locking trailing stop: when a position moves into profit,
+    # ratchet stop_loss above average_entry so winning trades lock in gains.
+    stops_ratcheted = False
+    for pair, pos in working.get("positions", {}).items():
+        mark = prices.get(pair)
+        if mark is None or mark <= 0:
+            continue
+        avg_entry = D(str(pos.get("average_entry", "0")))
+        if avg_entry <= 0:
+            continue
+        current_stop = D(str(pos["stop_loss"])) if pos.get("stop_loss") else D("0")
+        gain_pct = (mark - avg_entry) / avg_entry * D("100")
+        new_stop = None
+        if gain_pct >= D("0.35"):
+            candidate = (mark * D("0.9988")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+            if candidate > current_stop and candidate < mark:
+                new_stop = candidate
+        elif gain_pct >= D("0.15"):
+            candidate = (avg_entry * D("1.0005")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+            if candidate > current_stop and candidate < mark:
+                new_stop = candidate
+        if new_stop is not None:
+            pos["stop_loss"] = str(new_stop)
+            stops_ratcheted = True
+
+    equity = account_equity(working, prices)
     peak = max(D(str(account.get("peak_equity", equity))), equity)
     today = _utcnow().date().isoformat()
     day_start = D(str(account.get("day_start_equity", account.get("initial_equity", equity))))
@@ -241,7 +277,7 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
     working["day_start_date"] = day_date
 
     updated, triggered = evaluate_protective_triggers(working, prices)
-    metrics_changed = any(
+    metrics_changed = stops_ratcheted or any(
         updated.get(key) != original.get(key)
         for key in ("peak_equity", "day_start_equity", "day_start_date")
     )
@@ -365,19 +401,19 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        stop_distance = max(D(str(atr_val)) * D("1.5"), entry_estimate * D("0.001"))
+        stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0015"))
         stop = entry_estimate - stop_distance
-        target = entry_estimate + stop_distance * D("2")
+        target = entry_estimate + stop_distance * D("1.8")
         policy = RiskPolicy.from_env()
         if policy is None:
             return {"pair": pair, "decision": "REJECTED", "reason": "Risk policy is missing or invalid."}
-        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "15"))
+        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "20"))
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
         )
-        if allocatable_cash < D("10"):
-            return {"pair": pair, "decision": "HOLD", "reason": "Available cash or position allocation budget is below $10 minimum."}
+        if allocatable_cash < D("5"):
+            return {"pair": pair, "decision": "HOLD", "reason": "Available cash or position allocation budget is below $5 minimum."}
         quantity = calculate_spot_quantity(
             portfolio.equity,
             allocatable_cash,
@@ -386,7 +422,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             policy.max_trade_risk_pct * D("0.995"),
             fee_rate,
         )
-        if quantity <= 0 or (quantity * entry_estimate) < D("5"):
+        if quantity <= 0 or (quantity * entry_estimate) < D("2"):
             return {"pair": pair, "decision": "HOLD", "reason": "Risk-sized quantity is below supported precision or minimum notional."}
 
         updated, fill = simulate_order(
@@ -439,6 +475,26 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     return {"pair": pair, "decision": "HOLD", "reason": "No compatible open position for this signal.", "analysis": analysis}
 
 
+def _opportunity_score(pair: str, ticker: dict, candles: list) -> float:
+    """Rank candidate pairs by short-term positive momentum and trend alignment."""
+    try:
+        tech = _technical_precheck.analyse(candles)
+        if tech.signal != TradeAction.BUY:
+            return -999.0
+        closes = [float(c["close"]) for c in candles[-6:] if float(c.get("close", 0)) > 0]
+        short_mom = ((closes[-1] - closes[0]) / closes[0] * 100.0) if len(closes) >= 2 else 0.0
+        ema_spread = (
+            ((tech.ema_fast - tech.ema_slow) / tech.ema_slow * 100.0)
+            if (tech.ema_fast and tech.ema_slow and tech.ema_slow > 0)
+            else 0.0
+        )
+        rsi_bonus = 1.5 if (tech.rsi_14 and 50.0 <= tech.rsi_14 <= 66.0) else 0.3
+        chg = float(ticker.get("change_percent", 0.0))
+        return round(short_mom * 3.0 + ema_spread * 2.0 + chg * 0.5 + rsi_bonus, 4)
+    except Exception:
+        return -999.0
+
+
 async def run_autopilot_cycle(db=None) -> dict:
     """Run one autonomous paper cycle; caller must hold the worker lease."""
     if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true":
@@ -470,27 +526,72 @@ async def run_autopilot_cycle(db=None) -> dict:
     )
     results = []
     if portfolio_gate.get("approved"):
-        for pair in configured_pairs():
+        pairs = configured_pairs()
+        sem = asyncio.Semaphore(6)
+        candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "60"))
+
+        async def _load_pair_data(p: str):
+            async with sem:
+                try:
+                    t, c = await asyncio.gather(
+                        _market.get_ticker(p),
+                        _market.get_ohlc(p, interval=candle_interval),
+                    )
+                    return p, t, c, None
+                except Exception as exc:
+                    return p, None, None, exc
+
+        loaded = await asyncio.gather(*(_load_pair_data(p) for p in pairs))
+        # Prioritize: (1) currently held positions (to check exits), then
+        # (2) top-scoring candidate BUY opportunities diversified across asset classes
+        held_items = []
+        candidate_by_cat: dict[str, list[tuple[float, str, dict, list]]] = {}
+        failed_items = []
+        for p, t, c, err in loaded:
+            if err is not None or t is None or c is None:
+                failed_items.append((p, err))
+                continue
+            if p in account.get("positions", {}):
+                held_items.append((p, t, c))
+            else:
+                score = _opportunity_score(p, t, c)
+                cat = instrument_category(p)
+                candidate_by_cat.setdefault(cat, []).append((score, p, t, c))
+
+        for cat_list in candidate_by_cat.values():
+            cat_list.sort(key=lambda x: x[0], reverse=True)
+
+        # Interleave the #1 best setup from each asset class (forex, metals, indices, crypto),
+        # followed by remaining setups sorted by opportunity score.
+        ordered_candidates: list[tuple[str, dict, list]] = []
+        for cat in ("metals", "indices", "forex", "crypto"):
+            if candidate_by_cat.get(cat):
+                top = candidate_by_cat[cat].pop(0)
+                ordered_candidates.append((top[1], top[2], top[3]))
+        remaining = [item for sub in candidate_by_cat.values() for item in sub]
+        remaining.sort(key=lambda x: x[0], reverse=True)
+        for _, p, t, c in remaining:
+            ordered_candidates.append((p, t, c))
+
+        for p, _err in failed_items:
+            results.append({"pair": p, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})
+
+        for pair, ticker, candles in [*held_items, *ordered_candidates]:
             try:
-                ticker, candles = await asyncio.gather(
-                    _market.get_ticker(pair),
-                    _market.get_ohlc(pair, interval=int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "60"))),
-                )
                 result = await _execute_signal(db, account, pair, ticker, candles, portfolio, held_prices)
                 results.append(result)
-                # Reload after a fill so subsequent instruments use the same
-                # shared portfolio equity, cash and position budget.
-                account = await _get_account(db)
-                account, held_prices, _ = await _mark_and_protect_positions(db, account)
-                portfolio = _portfolio_snapshot(account, held_prices)
-                portfolio_gate = DeterministicRiskEngine(policy).evaluate_portfolio_state(
-                    daily_loss_pct=portfolio.daily_loss_pct,
-                    drawdown_pct=portfolio.drawdown_pct,
-                    open_positions=portfolio.open_positions,
-                    leverage=portfolio.leverage,
-                )
-                if not portfolio_gate.get("approved"):
-                    break
+                if result.get("decision") in {"BUY", "SELL"}:
+                    account = await _get_account(db)
+                    account, held_prices, _ = await _mark_and_protect_positions(db, account)
+                    portfolio = _portfolio_snapshot(account, held_prices)
+                    portfolio_gate = DeterministicRiskEngine(policy).evaluate_portfolio_state(
+                        daily_loss_pct=portfolio.daily_loss_pct,
+                        drawdown_pct=portfolio.drawdown_pct,
+                        open_positions=portfolio.open_positions,
+                        leverage=portfolio.leverage,
+                    )
+                    if not portfolio_gate.get("approved"):
+                        break
             except Exception as exc:
                 logger.exception("paper_autopilot_pair_failed pair=%s error_type=%s", pair, type(exc).__name__)
                 results.append({"pair": pair, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})

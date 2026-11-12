@@ -63,8 +63,8 @@ def _quantize(value: Decimal, step: Decimal) -> Decimal:
 
 def simulation_settings() -> tuple[Decimal, Decimal]:
     """Return fee rate and slippage basis points; both are simulation assumptions."""
-    fee = dec(os.getenv("PAPER_FEE_RATE", "0.0026"), "PAPER_FEE_RATE")
-    slippage = dec(os.getenv("PAPER_SLIPPAGE_BPS", "5"), "PAPER_SLIPPAGE_BPS")
+    fee = dec(os.getenv("PAPER_FEE_RATE", "0.0002"), "PAPER_FEE_RATE")
+    slippage = dec(os.getenv("PAPER_SLIPPAGE_BPS", "1"), "PAPER_SLIPPAGE_BPS")
     if fee < 0 or fee >= 1 or slippage < 0 or slippage > 500:
         raise PaperTradeError("Paper fee or slippage configuration is outside safe bounds.")
     return fee, slippage

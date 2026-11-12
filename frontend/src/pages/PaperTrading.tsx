@@ -211,10 +211,10 @@ const PaperTrading: React.FC = () => {
     if (!token.trim()) return;
     setBusy(true);
     setError('');
-    setMessage('Running immediate autonomous Forex & Crypto scan cycle...');
+    setMessage('Running immediate autonomous Forex, Metals, Indices & Crypto scan cycle...');
     try {
       const result = await request('autopilot/run', { method: 'POST' });
-      const fillsCount = (result.results || []).filter((r: any) => r.decision === 'EXECUTED').length;
+      const fillsCount = (result.results || []).filter((r: any) => r.decision === 'BUY' || r.decision === 'SELL' || r.decision === 'EXECUTED').length;
       setMessage(
         fillsCount > 0
           ? `Bot cycle complete: ${fillsCount} simulated trade(s) executed across ${result.pairs_checked || 0} pairs.`
@@ -223,6 +223,26 @@ const PaperTrading: React.FC = () => {
       await refresh(true);
     } catch (err: any) {
       setError(err.message || 'Immediate autopilot scan cycle failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetTo100AndTrade = async () => {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError('');
+    setMessage('Resetting paper account to $100.00 USD and running autonomous trade cycle...');
+    try {
+      const result = await request('reset', {
+        method: 'POST',
+        body: JSON.stringify({ initial_balance_usd: '100.00', run_cycle: true }),
+      });
+      const fillsCount = (result.cycle?.results || []).filter((r: any) => r.decision === 'BUY' || r.decision === 'SELL').length;
+      setMessage(`Account funded with $100.00 USD and ${fillsCount} autonomous trade(s) placed across Forex, Metals, Indices & Crypto.`);
+      await refresh(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset paper account to $100.00 USD.');
     } finally {
       setBusy(false);
     }
@@ -475,6 +495,9 @@ const PaperTrading: React.FC = () => {
             {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
           </span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="pb-btn pb-btn-ghost" onClick={resetTo100AndTrade} disabled={busy || !token.trim() || !autopilot?.paper_trading_enabled}>
+              <RefreshCw size={16} /> Seed $100 USD &amp; Trade
+            </button>
             <button className="pb-btn" onClick={runCycleNow} disabled={busy || !token.trim() || !autopilot?.paper_trading_enabled}>
               <Zap size={16} /> Run Bot Cycle Now
             </button>

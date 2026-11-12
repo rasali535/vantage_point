@@ -866,10 +866,10 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
             <div className="mf-micro-label">PORTFOLIO EQUITY (LIVE MARK)</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-              {paperPortfolio ? fmtUsd(Number(paperPortfolio.equity), 2) : '$1,000.00'}
+              {paperPortfolio ? fmtUsd(Number(paperPortfolio.equity), 2) : '$100.00'}
             </div>
             <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
-              Initial {paperPortfolio ? fmtUsd(Number(paperPortfolio.initial_equity || 1000), 2) : '$1,000.00'} · {paperPortfolio?.order_count ?? placedOrders.length} placed fills
+              Initial {paperPortfolio ? fmtUsd(Number(paperPortfolio.initial_equity || 100), 2) : '$100.00'} · {paperPortfolio?.order_count ?? placedOrders.length} placed fills
             </div>
           </div>
 
@@ -912,10 +912,10 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
             <div className="mf-micro-label">AVAILABLE VIRTUAL CASH</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-              {paperPortfolio ? fmtUsd(Number(paperPortfolio.cash), 2) : '$1,000.00'}
+              {paperPortfolio ? fmtUsd(Number(paperPortfolio.cash), 2) : '$100.00'}
             </div>
             <div className="mf-mono-muted" style={{ marginTop: '2px' }}>
-              1× spot collateral · 15% max allocation per pair
+              1× spot collateral · 20% max allocation per pair
             </div>
           </div>
         </div>
