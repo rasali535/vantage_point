@@ -8,6 +8,7 @@ interface CouncilProps {
     confidence: number;
     signal_quality?: number;
     whipsaw_risk?: string;
+    pair?: string;
   };
   scanning?: boolean;
 }
@@ -55,7 +56,7 @@ const BoardroomCouncil = ({ decision, scanning }: CouncilProps) => {
   return (
     <div className="glass card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
-        <h3>AI Market Analysis</h3>
+        <h3>AI Market Analysis{decision.pair ? ` — ${decision.pair}` : ''}</h3>
         <span className="badge">Recommendation only</span>
       </div>
 

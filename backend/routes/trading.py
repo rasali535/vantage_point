@@ -11,7 +11,7 @@ import time
 import httpx
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -218,11 +218,11 @@ async def get_boardroom_history():
     return [serialize_document(item) for item in history]
 
 
-async def scan_and_analyze() -> Dict[str, Any]:
+async def scan_and_analyze(pair: str | None = None) -> Dict[str, Any]:
     # Database availability is a prerequisite for an auditable scan.
     db = await get_database()
     k_agent = get_kraken_agent()
-    trading_pair = os.getenv("TRADING_PAIR", "BTC/USD")
+    trading_pair = (pair or os.getenv("TRADING_PAIR", "BTC/USD")).strip().upper()
 
     import asyncio
     ticker, candles = await asyncio.gather(
@@ -296,12 +296,29 @@ async def scan_and_analyze() -> Dict[str, Any]:
         "signal_quality_report": final_report,
     }
 
+class ScanRequest(BaseModel):
+    """Optional scan overrides. An absent body preserves the legacy contract."""
+
+    pair: str | None = Field(default=None, min_length=3, max_length=20)
+
+    @field_validator("pair")
+    @classmethod
+    def normalize_pair(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        base, separator, quote = cleaned.partition("/")
+        if not separator or not base.isalnum() or not quote.isalnum():
+            raise ValueError("pair must look like BASE/QUOTE, e.g. ETH/USD")
+        return f"{base}/{quote}"
+
+
 @router.post("/scan")
-async def scan_and_analyze_route():
+async def scan_and_analyze_route(payload: ScanRequest | None = None):
     request_id = uuid.uuid4().hex
     started = datetime.now(timezone.utc)
     try:
-        result = await scan_and_analyze()
+        result = await scan_and_analyze(pair=payload.pair if payload else None)
         elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
         logger.info("trading_scan_completed request_id=%s elapsed_ms=%d", request_id, elapsed_ms)
         return result
