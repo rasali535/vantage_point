@@ -25,6 +25,19 @@ YAHOO_FINANCE_BASES = (
 )
 
 GLOBAL_MACRO_SYMBOL_MAP: Dict[str, str] = {
+    # Institutional Interbank Forex
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "JPY=X",
+    "AUD/USD": "AUDUSD=X",
+    "USD/CAD": "CAD=X",
+    "USD/CHF": "CHF=X",
+    "EUR/GBP": "EURGBP=X",
+    "EUR/JPY": "EURJPY=X",
+    "EUR/CHF": "EURCHF=X",
+    "EUR/AUD": "EURAUD=X",
+    "EUR/CAD": "EURCAD=X",
+    "AUD/JPY": "AUDJPY=X",
     # Precious & Industrial Metals
     "XAU/USD": "GC=F",
     "XAG/USD": "SI=F",
@@ -186,8 +199,20 @@ class KrakenAgent:
         }
 
     async def _get_macro_ohlc(self, pair: str, yahoo_symbol: str, interval: int = 60) -> List[Dict]:
-        yf_interval = "60m" if interval >= 60 else f"{max(5, interval)}m"
-        chart = await self._yahoo_chart_request(yahoo_symbol, interval=yf_interval, range_str="1mo")
+        if interval <= 1:
+            yf_interval, yf_range = "1m", "1d"
+        elif interval <= 5:
+            yf_interval, yf_range = "5m", "5d"
+        elif interval <= 15:
+            yf_interval, yf_range = "15m", "5d"
+        elif interval <= 30:
+            yf_interval, yf_range = "30m", "1mo"
+        else:
+            yf_interval, yf_range = "60m", "1mo"
+        try:
+            chart = await self._yahoo_chart_request(yahoo_symbol, interval=yf_interval, range_str=yf_range)
+        except Exception:
+            chart = await self._yahoo_chart_request(yahoo_symbol, interval="5m", range_str="5d")
         timestamps = chart.get("timestamp") or []
         quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
         opens = quote.get("open") or []

@@ -3,8 +3,9 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from paper_trading.autopilot import calculate_spot_quantity, configured_pairs
+from paper_trading.autopilot import _evaluate_scalp_signal, _opportunity_score, calculate_spot_quantity, configured_pairs
 from paper_trading.engine import PaperTradeError
+from agents.contracts import TradeAction
 from agents.performance import PerformanceAgent
 
 
@@ -83,6 +84,31 @@ class AutonomousPaperSizingTests(unittest.TestCase):
         self.assertEqual(result["sample_size"], 2)
         self.assertEqual(result["realized_pnl"], 1.5)
         self.assertEqual(result["win_rate_pct"], 50.0)
+
+    def test_scalp_signal_prioritizes_1m_5m_metals_and_fast_movers(self):
+        candles = []
+        base = 3900.0
+        for idx in range(60):
+            # Realistic 2-up, 1-pullback upward trend so RSI stays in 55-64 range
+            step = 0.60 if (idx % 3 != 1) else -0.45
+            base += step
+            candles.append({
+                "timestamp": 1700000000 + idx * 60,
+                "open": base - 0.15,
+                "high": base + 0.55,
+                "low": base - 0.30,
+                "close": base + 0.20,
+                "vwap": base + 0.05,
+                "volume": 120.0,
+            })
+        ticker = {"last": candles[-1]["close"], "change_percent": 0.48}
+        scalp = _evaluate_scalp_signal("XAU/USD", ticker, candles, candles)
+        self.assertEqual(scalp["signal"], TradeAction.BUY)
+        self.assertIn(scalp["timeframe"], ("1m", "5m", "1m+5m"))
+        self.assertGreaterEqual(scalp["confidence"], Decimal("0.75"))
+        metal_score = _opportunity_score("XAU/USD", ticker, candles, candles)
+        fx_score = _opportunity_score("EUR/USD", ticker, candles, candles)
+        self.assertGreater(metal_score, fx_score)
 
 
 if __name__ == "__main__":

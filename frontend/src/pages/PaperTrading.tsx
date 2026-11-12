@@ -507,7 +507,7 @@ const PaperTrading: React.FC = () => {
           </div>
         </div>
         <div className="pb-muted" style={{ marginTop: 10 }}>
-          {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+          {autopilot ? `1m & 5m High-Speed Scalper Active (Metals Priority + Fast Movers) · Markets: ${autopilot.pairs.join(', ')} · Scalp scan every ${autopilot.scan_interval_seconds}s · Exit & profit-harvest checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
         </div>
         {autopilot && !autopilot.worker_running && <div className="pb-alert pb-alert-error" style={{ marginTop: 10, marginBottom: 0 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</div>}
         <div className="pb-muted" style={{ marginTop: 10 }}>

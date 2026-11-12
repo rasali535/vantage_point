@@ -103,6 +103,8 @@ async def get_trading_status():
                 **summary,
                 "autopilot_enabled": bool(auto_state and auto_state.get("enabled") is True),
                 "autopilot_pairs": configured_pairs(),
+                "scalp_mode": True,
+                "scalp_timeframes": ["1m", "5m"],
                 "recent_orders": orders_list,
             }
     except Exception as exc:
@@ -139,15 +141,16 @@ async def get_trading_status():
 
 
 @router.get("/market-overview")
-async def get_market_overview(pair: str = "EUR/USD"):
+async def get_market_overview(pair: str = "XAU/USD", interval: int = 5):
     import asyncio
-    cleaned_pair = (pair or "EUR/USD").strip().upper()
+    cleaned_pair = (pair or "XAU/USD").strip().upper()
+    safe_interval = interval if interval in (1, 5, 15, 30, 60) else 5
     agent = get_kraken_agent()
 
     async def _fetch_active():
         ticker, candles = await asyncio.gather(
             agent.get_ticker(cleaned_pair),
-            agent.get_ohlc(cleaned_pair, interval=60),
+            agent.get_ohlc(cleaned_pair, interval=safe_interval),
         )
         tech = _technical_agent.analyse(candles)
         return ticker, candles[-60:], tech.model_dump(mode="json")
@@ -192,6 +195,7 @@ async def get_market_overview(pair: str = "EUR/USD"):
     return {
         "pair": cleaned_pair,
         "category": instrument_category(cleaned_pair),
+        "interval": safe_interval,
         "timestamp": utc_now(),
         "ticker": ticker,
         "candles": candles,

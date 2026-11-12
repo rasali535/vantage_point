@@ -239,8 +239,9 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
             if val is not None and val > 0:
                 prices[p] = val
 
-    # Dynamic profit-locking trailing stop: when a position moves into profit,
-    # ratchet stop_loss above average_entry so winning trades lock in gains.
+    # Dynamic profit-locking trailing stop for 1m/5m scalping:
+    # as soon as a position moves +0.08% into profit, ratchet stop_loss above
+    # average_entry (+0.04% covers round-trip fees); at +0.18% trail tightly at -0.08%.
     stops_ratcheted = False
     for pair, pos in working.get("positions", {}).items():
         mark = prices.get(pair)
@@ -252,12 +253,12 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
         current_stop = D(str(pos["stop_loss"])) if pos.get("stop_loss") else D("0")
         gain_pct = (mark - avg_entry) / avg_entry * D("100")
         new_stop = None
-        if gain_pct >= D("0.35"):
-            candidate = (mark * D("0.9988")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        if gain_pct >= D("0.18"):
+            candidate = (mark * D("0.9992")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
-        elif gain_pct >= D("0.15"):
-            candidate = (avg_entry * D("1.0005")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        elif gain_pct >= D("0.08"):
+            candidate = (avg_entry * D("1.0004")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
         if new_stop is not None:
@@ -313,23 +314,185 @@ def _portfolio_snapshot(account: dict, prices: dict[str, Decimal]) -> PortfolioR
     )
 
 
-async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: list, portfolio: PortfolioRiskSnapshot, portfolio_prices: dict[str, Decimal]) -> dict:
+def _ema_series(values: list[float], period: int) -> float | None:
+    if not values:
+        return None
+    alpha = 2.0 / (period + 1.0)
+    ema = values[0]
+    for v in values[1:]:
+        ema = v * alpha + ema * (1.0 - alpha)
+    return ema
+
+
+def _evaluate_scalp_signal(
+    pair: str,
+    ticker: dict,
+    candles_5m: list,
+    candles_1m: list | None = None,
+) -> dict:
+    """Evaluate 1m & 5m high-speed scalping setup for Metals and fast movers."""
+    c5 = candles_5m or []
+    c1 = candles_1m if (candles_1m and len(candles_1m) >= 8) else c5
+    tech_5m = _technical_precheck.analyse(c5)
+    tech_1m = _technical_precheck.analyse(c1)
+
+    closes_1m = [float(c["close"]) for c in c1[-24:] if float(c.get("close", 0)) > 0]
+    closes_5m = [float(c["close"]) for c in c5[-24:] if float(c.get("close", 0)) > 0]
+    ema8_1m = _ema_series(closes_1m, 8)
+    ema21_1m = _ema_series(closes_1m, 21)
+    ema8_5m = _ema_series(closes_5m, 8)
+    ema21_5m = _ema_series(closes_5m, 21)
+
+    atr_1m = float(tech_1m.atr or 0.0)
+    atr_5m = float(tech_5m.atr or atr_1m or 0.0)
+    vel_1m = ((closes_1m[-1] - closes_1m[-4]) / atr_1m) if (len(closes_1m) >= 4 and atr_1m > 0) else 0.0
+    vel_5m = ((closes_5m[-1] - closes_5m[-4]) / atr_5m) if (len(closes_5m) >= 4 and atr_5m > 0) else 0.0
+    last_bar_bull_1m = len(c1) >= 1 and float(c1[-1].get("close", 0)) >= float(c1[-1].get("open", 0))
+    micro_bull_1m = bool(ema8_1m and ema21_1m and ema8_1m >= ema21_1m and closes_1m and closes_1m[-1] >= ema8_1m)
+    micro_bull_5m = bool(ema8_5m and ema21_5m and ema8_5m >= ema21_5m and closes_5m and closes_5m[-1] >= ema8_5m)
+
+    category = instrument_category(pair)
+    is_metal = category == "metals"
+    rsi_1m = float(tech_1m.rsi_14 or 50.0)
+    rsi_5m = float(tech_5m.rsi_14 or 50.0)
+
+    # Determine composite scalp signal & confidence
+    signal = TradeAction.HOLD
+    timeframe = "5m"
+    conf = 0.58
+    reasons: list[str] = []
+
+    if tech_5m.signal == TradeAction.BUY and (tech_1m.signal == TradeAction.BUY or micro_bull_1m):
+        signal = TradeAction.BUY
+        timeframe = "1m+5m"
+        conf = 0.82
+        reasons.append("1m + 5m dual-timeframe bullish alignment")
+    elif (tech_1m.signal == TradeAction.BUY or (micro_bull_1m and vel_1m >= 0.35 and last_bar_bull_1m)) and tech_5m.signal != TradeAction.SELL and rsi_1m <= 73.0:
+        signal = TradeAction.BUY
+        timeframe = "1m"
+        conf = 0.76
+        reasons.append(f"1m micro-breakout scalp (vel={vel_1m:+.2f} ATR)")
+    elif (tech_5m.signal == TradeAction.BUY or (micro_bull_5m and vel_5m >= 0.30)) and rsi_5m <= 72.0:
+        signal = TradeAction.BUY
+        timeframe = "5m"
+        conf = 0.74
+        reasons.append(f"5m momentum scalp (vel={vel_5m:+.2f} ATR)")
+    elif is_metal and (micro_bull_1m or micro_bull_5m) and (vel_1m > 0.05 or vel_5m > 0.05) and 36.0 <= rsi_1m <= 70.0:
+        signal = TradeAction.BUY
+        timeframe = "1m+5m"
+        conf = 0.75
+        reasons.append("Metals priority 1m/5m continuation setup")
+    elif tech_1m.signal == TradeAction.SELL and tech_5m.signal == TradeAction.SELL:
+        signal = TradeAction.SELL
+        timeframe = "1m+5m"
+        conf = 0.80
+        reasons.append("1m + 5m dual-timeframe bearish reversal")
+    elif tech_5m.signal == TradeAction.SELL or (tech_1m.signal == TradeAction.SELL and vel_1m <= -0.45):
+        signal = TradeAction.SELL
+        timeframe = "1m" if tech_1m.signal == TradeAction.SELL else "5m"
+        conf = 0.73
+        reasons.append("Short-term momentum exhaustion / sell trigger")
+
+    if signal == TradeAction.BUY:
+        if is_metal:
+            conf = min(0.95, conf + 0.06)
+            reasons.append("Metals scalping priority boost")
+        if vel_1m >= 0.60 or vel_5m >= 0.60:
+            conf = min(0.96, conf + 0.05)
+            reasons.append("High-velocity fast mover")
+        if 48.0 <= rsi_1m <= 66.0:
+            conf = min(0.96, conf + 0.03)
+
+    return {
+        "signal": signal,
+        "confidence": D(str(round(conf, 2))),
+        "timeframe": timeframe,
+        "tech_5m": tech_5m,
+        "tech_1m": tech_1m,
+        "atr": tech_5m.atr if (tech_5m.atr and tech_5m.atr > 0) else tech_1m.atr,
+        "vel_1m": round(vel_1m, 3),
+        "vel_5m": round(vel_5m, 3),
+        "rationale": (
+            f"[{timeframe.upper()} SCALP · {category.upper()}] "
+            f"{'; '.join(reasons) or 'Technical scalp evaluation'} "
+            f"(1m RSI={rsi_1m:.1f}, 5m RSI={rsi_5m:.1f}, 1m vel={vel_1m:+.2f} ATR, 5m vel={vel_5m:+.2f} ATR)."
+        ),
+    }
+
+
+async def _execute_signal(
+    db,
+    account: dict,
+    pair: str,
+    ticker: dict,
+    candles: list,
+    portfolio: PortfolioRiskSnapshot,
+    portfolio_prices: dict[str, Decimal],
+    candles_1m: list | None = None,
+) -> dict:
     current = account.get("positions", {}).get(pair)
-    technical_precheck = _technical_precheck.analyse(candles)
-    if technical_precheck.signal == TradeAction.HOLD:
-        return {"pair": pair, "decision": "HOLD", "reason": "Deterministic technical pre-check found no entry or exit signal."}
-    if technical_precheck.signal == TradeAction.BUY and current:
-        return {"pair": pair, "decision": "HOLD", "reason": "A paper position is already open for this pair."}
-    if technical_precheck.signal == TradeAction.SELL and not current:
+    scalp = _evaluate_scalp_signal(pair, ticker, candles, candles_1m)
+    technical_precheck = scalp["tech_5m"]
+    tech_1m = scalp["tech_1m"]
+
+    # Instant Scalp Profit Harvesting on open positions:
+    # bank realized USD profit when a scalp reaches >= +0.18% net gain OR
+    # >= +0.07% net gain while 1m/5m momentum stalls or turns overbought.
+    if current:
+        price_now = D(str(ticker["last"]))
+        avg_entry = D(str(current.get("average_entry", "0")))
+        if avg_entry > 0 and price_now > avg_entry:
+            gain_pct = (price_now - avg_entry) / avg_entry * D("100")
+            momentum_stall = (
+                scalp["signal"] == TradeAction.SELL
+                or tech_1m.signal == TradeAction.SELL
+                or (tech_1m.rsi_14 is not None and tech_1m.rsi_14 >= 64.0)
+                or scalp["vel_1m"] < -0.15
+            )
+            if gain_pct >= D("0.18") or (gain_pct >= D("0.07") and momentum_stall):
+                quantity = D(str(current["quantity"]))
+                updated, fill = simulate_order(
+                    account,
+                    pair=pair,
+                    side="SELL",
+                    quantity=quantity,
+                    reference_price=price_now,
+                    idempotency_key=f"autopilot:scalp-harvest:{pair}:{uuid.uuid4().hex}",
+                )
+                saved = await _save_account(db, account, updated)
+                harvest_rationale = (
+                    f"[1M/5M SCALP PROFIT HARVEST] Banked +{gain_pct:.3f}% profit on {pair} "
+                    f"@ {fill.get('fill_price')} (realized P&L ${fill.get('realized_pnl_usd')})."
+                )
+                await _record_event(db, {
+                    **fill,
+                    "event_type": "scalp_profit_harvest",
+                    "strategy_confidence": str(scalp["confidence"]),
+                    "strategy_rationale": harvest_rationale,
+                    "technical_analysis": tech_1m.model_dump(mode="json"),
+                })
+                return {
+                    "pair": pair,
+                    "decision": "SELL",
+                    "fill": fill,
+                    "account_version": saved.get("version"),
+                    "reason": harvest_rationale,
+                }
+
+    if scalp["signal"] == TradeAction.HOLD:
+        return {"pair": pair, "decision": "HOLD", "reason": "1m/5m scalping pre-check found no high-confidence entry or exit signal."}
+    if scalp["signal"] == TradeAction.BUY and current:
+        return {"pair": pair, "decision": "HOLD", "reason": "A paper scalp position is already open for this pair."}
+    if scalp["signal"] == TradeAction.SELL and not current:
         return {"pair": pair, "decision": "HOLD", "reason": "No open long position exists to close."}
 
-    confidence_floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.55"))
+    confidence_floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.62"))
     if not D("0.5") <= confidence_floor <= D("1"):
         return {"pair": pair, "decision": "HOLD", "reason": "Autonomous confidence threshold is outside the safe 0.5–1.0 range."}
 
     # Spend model calls when deterministic indicators show a compatible
     # candidate entry or exit; if the LLM stage times out or hesitates on a
-    # confirmed deterministic signal, fall back to deterministic technical
+    # confirmed 1m/5m scalp signal, fall back to deterministic scalping
     # parameters while keeping the DeterministicRiskEngine authoritative.
     cycle = None
     if os.getenv("PAPER_AUTOTRADING_USE_LLM", "true").lower() == "true":
@@ -342,7 +505,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
                     portfolio=portfolio,
                     closed_trades=account.get("orders", []),
                 ),
-                timeout=float(os.getenv("PAPER_AUTOTRADING_PAIR_TIMEOUT_SECONDS", "22")),
+                timeout=float(os.getenv("PAPER_AUTOTRADING_PAIR_TIMEOUT_SECONDS", "14")),
             )
         except Exception as exc:
             logger.warning("paper_autopilot_llm_fallback pair=%s error_type=%s", pair, type(exc).__name__)
@@ -350,41 +513,35 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
 
     if cycle is not None:
         action = cycle.strategy.action
-        confidence = D(str(cycle.strategy.confidence))
-        technical_signal = cycle.technical_analysis.signal
-        atr_val = cycle.technical_analysis.atr
-        rationale = cycle.strategy.rationale
-        if action == TradeAction.HOLD and technical_signal in {TradeAction.BUY, TradeAction.SELL}:
-            action = technical_signal
-            confidence = max(confidence, D("0.72"))
-            rationale = (
-                f"[DETERMINISTIC TECHNICAL EXECUTION] {rationale} "
-                f"Confirmed {technical_signal.value} on {cycle.technical_analysis.trend} ({', '.join(cycle.technical_analysis.evidence)})."
-            )
+        confidence = max(D(str(cycle.strategy.confidence)), scalp["confidence"])
+        technical_signal = scalp["signal"]
+        atr_val = scalp["atr"] or cycle.technical_analysis.atr
+        rationale = f"{scalp['rationale']} | {cycle.strategy.rationale}"
+        if action == TradeAction.HOLD and scalp["signal"] in {TradeAction.BUY, TradeAction.SELL}:
+            action = scalp["signal"]
     else:
-        action = technical_precheck.signal
-        confidence = D("0.72")
-        technical_signal = technical_precheck.signal
-        atr_val = technical_precheck.atr
-        rationale = (
-            f"Deterministic {technical_precheck.trend} signal ({', '.join(technical_precheck.evidence)}) "
-            f"verified against risk policy."
-        )
+        action = scalp["signal"]
+        confidence = scalp["confidence"]
+        technical_signal = scalp["signal"]
+        atr_val = scalp["atr"]
+        rationale = scalp["rationale"]
 
     signal_report = whipsaw_protection.evaluate_signal_quality(candles, account.get("orders", []), action.value)
     analysis = {
-        "strategy": cycle.strategy.model_dump(mode="json") if cycle else {
+        "strategy": {
             "action": action.value,
             "confidence": float(confidence),
             "rationale": rationale,
+            "timeframe": scalp["timeframe"],
         },
         "technical_analysis": (cycle.technical_analysis if cycle else technical_precheck).model_dump(mode="json"),
+        "scalp_1m": tech_1m.model_dump(mode="json"),
         "risk_assessment": cycle.risk_assessment.model_dump(mode="json") if cycle else {"summary": "Deterministic risk gate active"},
         "execution_assessment": cycle.execution_assessment.model_dump(mode="json") if cycle else {"status": "paper_simulation"},
         "performance": cycle.performance_context if cycle else {},
         "signal_quality": signal_report,
     }
-    if signal_report.get("action_recommendation") == "FORCE_HOLD":
+    if signal_report.get("action_recommendation") == "FORCE_HOLD" and confidence < D("0.78"):
         action = TradeAction.HOLD
 
     if confidence < confidence_floor or action == TradeAction.HOLD:
@@ -401,13 +558,14 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0015"))
+        # Tight 1m/5m scalp stop & quick-harvest target
+        stop_distance = max(D(str(atr_val)) * D("1.0"), entry_estimate * D("0.0012"))
         stop = entry_estimate - stop_distance
-        target = entry_estimate + stop_distance * D("1.8")
+        target = entry_estimate + stop_distance * D("1.45")
         policy = RiskPolicy.from_env()
         if policy is None:
             return {"pair": pair, "decision": "REJECTED", "reason": "Risk policy is missing or invalid."}
-        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "20"))
+        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "24"))
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
@@ -431,7 +589,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             side="BUY",
             quantity=quantity,
             reference_price=price,
-            idempotency_key=f"autopilot:entry:{pair}:{uuid.uuid4().hex}",
+            idempotency_key=f"autopilot:scalp-entry:{pair}:{uuid.uuid4().hex}",
             stop_loss_price=stop,
             take_profit_price=target,
             risk_engine=DeterministicRiskEngine(policy),
@@ -440,14 +598,15 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         saved = await _save_account(db, account, updated)
         await _record_event(db, {
             **fill,
-            "event_type": "autonomous_entry",
+            "event_type": "autonomous_scalp_entry",
+            "timeframe": scalp["timeframe"],
             "strategy_confidence": str(confidence),
             "strategy_rationale": rationale[:1000],
             "technical_analysis": analysis.get("technical_analysis"),
             "stop_loss": str(stop),
             "take_profit": str(target),
         })
-        return {"pair": pair, "decision": "BUY", "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
+        return {"pair": pair, "decision": "BUY", "timeframe": scalp["timeframe"], "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
 
     if action == TradeAction.SELL and current:
         if technical_signal != TradeAction.SELL:
@@ -475,28 +634,29 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     return {"pair": pair, "decision": "HOLD", "reason": "No compatible open position for this signal.", "analysis": analysis}
 
 
-def _opportunity_score(pair: str, ticker: dict, candles: list) -> float:
-    """Rank candidate pairs by short-term positive momentum and trend alignment."""
+def _opportunity_score(pair: str, ticker: dict, candles_5m: list, candles_1m: list | None = None) -> float:
+    """Rank 1m & 5m scalping opportunities with priority for Metals and fast movers."""
     try:
-        tech = _technical_precheck.analyse(candles)
-        if tech.signal != TradeAction.BUY:
+        scalp = _evaluate_scalp_signal(pair, ticker, candles_5m, candles_1m)
+        if scalp["signal"] != TradeAction.BUY:
             return -999.0
-        closes = [float(c["close"]) for c in candles[-6:] if float(c.get("close", 0)) > 0]
-        short_mom = ((closes[-1] - closes[0]) / closes[0] * 100.0) if len(closes) >= 2 else 0.0
-        ema_spread = (
-            ((tech.ema_fast - tech.ema_slow) / tech.ema_slow * 100.0)
-            if (tech.ema_fast and tech.ema_slow and tech.ema_slow > 0)
-            else 0.0
-        )
-        rsi_bonus = 1.5 if (tech.rsi_14 and 50.0 <= tech.rsi_14 <= 66.0) else 0.3
-        chg = float(ticker.get("change_percent", 0.0))
-        return round(short_mom * 3.0 + ema_spread * 2.0 + chg * 0.5 + rsi_bonus, 4)
+        c1 = candles_1m if (candles_1m and len(candles_1m) >= 6) else candles_5m
+        closes_1m = [float(c["close"]) for c in c1[-6:] if float(c.get("close", 0)) > 0]
+        closes_5m = [float(c["close"]) for c in candles_5m[-6:] if float(c.get("close", 0)) > 0]
+        mom_1m = ((closes_1m[-1] - closes_1m[0]) / closes_1m[0] * 100.0) if len(closes_1m) >= 2 else 0.0
+        mom_5m = ((closes_5m[-1] - closes_5m[0]) / closes_5m[0] * 100.0) if len(closes_5m) >= 2 else 0.0
+        cat = instrument_category(pair)
+        metals_boost = 3.5 if cat == "metals" else 0.0
+        velocity_boost = max(0.0, float(scalp["vel_1m"]) * 2.5 + float(scalp["vel_5m"]) * 2.0)
+        conf_boost = float(scalp["confidence"]) * 5.0
+        chg = abs(float(ticker.get("change_percent", 0.0))) * 0.35
+        return round(metals_boost + velocity_boost + conf_boost + mom_1m * 4.0 + mom_5m * 2.5 + chg, 4)
     except Exception:
         return -999.0
 
 
 async def run_autopilot_cycle(db=None) -> dict:
-    """Run one autonomous paper cycle; caller must hold the worker lease."""
+    """Run one autonomous 1m/5m scalping paper cycle; caller must hold the worker lease."""
     if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true":
         return {"status": "disabled", "reason": "Paper trading is disabled."}
     if not os.getenv("PAPER_API_TOKEN") or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
@@ -525,60 +685,71 @@ async def run_autopilot_cycle(db=None) -> dict:
         leverage=portfolio.leverage,
     )
     results = []
-    if portfolio_gate.get("approved"):
+    if portfolio_gate.get("approved") or account.get("positions"):
         pairs = configured_pairs()
         sem = asyncio.Semaphore(6)
-        candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "60"))
+        candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "5"))
 
         async def _load_pair_data(p: str):
             async with sem:
                 try:
-                    t, c = await asyncio.gather(
+                    t, c5 = await asyncio.gather(
                         _market.get_ticker(p),
                         _market.get_ohlc(p, interval=candle_interval),
                     )
-                    return p, t, c, None
+                    try:
+                        c1 = await _market.get_ohlc(p, interval=1)
+                    except Exception:
+                        c1 = c5
+                    return p, t, c5, c1, None
                 except Exception as exc:
-                    return p, None, None, exc
+                    return p, None, None, None, exc
 
         loaded = await asyncio.gather(*(_load_pair_data(p) for p in pairs))
-        # Prioritize: (1) currently held positions (to check exits), then
-        # (2) top-scoring candidate BUY opportunities diversified across asset classes
+        # Prioritize: (1) currently held positions (to check 1m/5m scalp profit harvest or exits),
+        # then (2) Metals & fast-moving high-confidence 1m/5m BUY setups
         held_items = []
-        candidate_by_cat: dict[str, list[tuple[float, str, dict, list]]] = {}
+        candidate_by_cat: dict[str, list[tuple[float, str, dict, list, list]]] = {}
         failed_items = []
-        for p, t, c, err in loaded:
-            if err is not None or t is None or c is None:
+        for p, t, c5, c1, err in loaded:
+            if err is not None or t is None or c5 is None:
                 failed_items.append((p, err))
                 continue
             if p in account.get("positions", {}):
-                held_items.append((p, t, c))
-            else:
-                score = _opportunity_score(p, t, c)
+                held_items.append((p, t, c5, c1))
+            elif portfolio_gate.get("approved"):
+                score = _opportunity_score(p, t, c5, c1)
                 cat = instrument_category(p)
-                candidate_by_cat.setdefault(cat, []).append((score, p, t, c))
+                candidate_by_cat.setdefault(cat, []).append((score, p, t, c5, c1))
 
         for cat_list in candidate_by_cat.values():
             cat_list.sort(key=lambda x: x[0], reverse=True)
 
-        # Interleave the #1 best setup from each asset class (forex, metals, indices, crypto),
-        # followed by remaining setups sorted by opportunity score.
-        ordered_candidates: list[tuple[str, dict, list]] = []
+        # Prioritize Metals first (Gold, Silver, Platinum, Copper), then the fastest movers
+        # across Indices, Forex, and Crypto sorted by velocity & confidence score.
+        ordered_candidates: list[tuple[str, dict, list, list]] = []
+        if candidate_by_cat.get("metals"):
+            top_metal = candidate_by_cat["metals"].pop(0)
+            if top_metal[0] > -900:
+                ordered_candidates.append((top_metal[1], top_metal[2], top_metal[3], top_metal[4]))
         for cat in ("metals", "indices", "forex", "crypto"):
             if candidate_by_cat.get(cat):
                 top = candidate_by_cat[cat].pop(0)
-                ordered_candidates.append((top[1], top[2], top[3]))
+                if top[0] > -900:
+                    ordered_candidates.append((top[1], top[2], top[3], top[4]))
         remaining = [item for sub in candidate_by_cat.values() for item in sub]
         remaining.sort(key=lambda x: x[0], reverse=True)
-        for _, p, t, c in remaining:
-            ordered_candidates.append((p, t, c))
+        for _, p, t, c5, c1 in remaining:
+            ordered_candidates.append((p, t, c5, c1))
 
         for p, _err in failed_items:
             results.append({"pair": p, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})
 
-        for pair, ticker, candles in [*held_items, *ordered_candidates]:
+        for pair, ticker, candles_5m, candles_1m in [*held_items, *ordered_candidates]:
             try:
-                result = await _execute_signal(db, account, pair, ticker, candles, portfolio, held_prices)
+                result = await _execute_signal(
+                    db, account, pair, ticker, candles_5m, portfolio, held_prices, candles_1m=candles_1m
+                )
                 results.append(result)
                 if result.get("decision") in {"BUY", "SELL"}:
                     account = await _get_account(db)
@@ -590,8 +761,6 @@ async def run_autopilot_cycle(db=None) -> dict:
                         open_positions=portfolio.open_positions,
                         leverage=portfolio.leverage,
                     )
-                    if not portfolio_gate.get("approved"):
-                        break
             except Exception as exc:
                 logger.exception("paper_autopilot_pair_failed pair=%s error_type=%s", pair, type(exc).__name__)
                 results.append({"pair": pair, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})
@@ -599,6 +768,7 @@ async def run_autopilot_cycle(db=None) -> dict:
     summary = {
         "status": "completed",
         "timestamp": _utcnow().isoformat(),
+        "scalp_timeframes": ["1m", "5m"],
         "pairs_checked": len(results),
         "results": results,
         "protective_exits": protective_exits,
@@ -622,8 +792,8 @@ async def run_autopilot_once(db=None) -> dict:
 
 
 async def _worker_loop() -> None:
-    monitor_interval = max(10, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "20"))))
-    scan_interval = max(60, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "300"))))
+    monitor_interval = max(5, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "10"))))
+    scan_interval = max(15, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "30"))))
     last_scan: float | None = None
     while True:
         try:
@@ -702,8 +872,10 @@ async def autopilot_status(db) -> dict:
         "worker_configured": _enabled_by_operator(),
         "worker_running": _worker_task is not None and not _worker_task.done(),
         "paper_trading_enabled": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true",
-        "monitor_interval_seconds": max(10, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "20")))),
-        "scan_interval_seconds": max(60, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "300")))),
+        "scalp_mode": True,
+        "scalp_timeframes": ["1m", "5m"],
+        "monitor_interval_seconds": max(5, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "10")))),
+        "scan_interval_seconds": max(15, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "30")))),
         "pairs": configured_pairs(),
         "execution_mode": "paper",
         "live_execution_enabled": False,

@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -110,18 +111,19 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
   const [candles, setCandles] = useState<KrakenCandle[]>([]);
   const [watchboard, setWatchboard] = useState<Array<{ pair: string; category: string; last: number; change_percent: number; high_24h?: number; low_24h?: number }>>([]);
   const [marketCategoryFilter, setMarketCategoryFilter] = useState<'all' | 'forex' | 'metals' | 'indices' | 'crypto'>('all');
+  const [timeframe, setTimeframe] = useState<1 | 5 | 15 | 60>(5);
   const [pulseLoading, setPulseLoading] = useState(false);
   const [pulseError, setPulseError] = useState('');
   const [topWinIndex, setTopWinIndex] = useState(0);
   const [countdown, setCountdown] = useState(15);
 
-  const fetchKrakenPulse = useCallback(async (targetPair: string) => {
+  const fetchKrakenPulse = useCallback(async (targetPair: string, targetInterval: number = timeframe) => {
     setPulseLoading(true);
     setPulseError('');
     try {
       const encoded = encodeURIComponent(targetPair);
-      // Primary: backend multi-asset market overview (supports Forex, Metals, Indices, and Crypto)
-      const backendRes = await fetch(`${API_BASE_URL}/api/trading/market-overview?pair=${encoded}`).catch(() => null);
+      // Primary: backend multi-asset market overview (supports 1m/5m/15m/60m for Forex, Metals, Indices, and Crypto)
+      const backendRes = await fetch(`${API_BASE_URL}/api/trading/market-overview?pair=${encoded}&interval=${targetInterval}`).catch(() => null);
       if (backendRes && backendRes.ok) {
         const overview = await backendRes.json();
         const t = overview?.ticker;
@@ -166,7 +168,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
       // Fallback: direct Kraken public REST for Forex & Crypto
       const [tickerRes, ohlcRes] = await Promise.all([
         fetch(`https://api.kraken.com/0/public/Ticker?pair=${encoded}&assetVersion=1`),
-        fetch(`https://api.kraken.com/0/public/OHLC?pair=${encoded}&interval=60&assetVersion=1`),
+        fetch(`https://api.kraken.com/0/public/OHLC?pair=${encoded}&interval=${targetInterval}&assetVersion=1`),
       ]);
       const tickerJson = await tickerRes.json();
       const ohlcJson = await ohlcRes.json();
@@ -223,15 +225,15 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
     } finally {
       setPulseLoading(false);
     }
-  }, []);
+  }, [timeframe]);
 
   useEffect(() => {
-    void fetchKrakenPulse(pair);
+    void fetchKrakenPulse(pair, timeframe);
     const refreshId = window.setInterval(() => {
-      void fetchKrakenPulse(pair);
+      void fetchKrakenPulse(pair, timeframe);
     }, 15000);
     return () => window.clearInterval(refreshId);
-  }, [pair, fetchKrakenPulse]);
+  }, [pair, timeframe, fetchKrakenPulse]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -636,9 +638,29 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
               </button>
             ))}
           </div>
-          <span className="mf-mono-muted" style={{ fontSize: '0.68rem' }}>
-            CLICK ANY INSTRUMENT TO VIEW LIVE MOVEMENTS &amp; SCAN
-          </span>
+          <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="mf-eyebrow-text" style={{ marginRight: '2px' }}>SCALP TIMEFRAME:</span>
+            {([
+              { tf: 1, label: '⚡ 1M SCALP' },
+              { tf: 5, label: '⚡ 5M SCALP' },
+              { tf: 15, label: '15M' },
+              { tf: 60, label: '1H' },
+            ] as const).map((item) => (
+              <button
+                key={item.tf}
+                type="button"
+                onClick={() => setTimeframe(item.tf)}
+                className="mf-pill-action"
+                style={
+                  timeframe === item.tf
+                    ? { background: '#9a3412', color: '#ffffff', borderColor: '#9a3412' }
+                    : undefined
+                }
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid #eef2f6' }}>
@@ -684,8 +706,9 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
             <div className="mf-eyebrow-row">
               <span className="mf-dot mf-dot-green" />
               <span className="mf-eyebrow-text">MUSE SPARK 1.3 · {inferCategory(pair)} TELEMETRY</span>
-              <span className="mf-tag-outline">{pair} · 1H</span>
+              <span className="mf-tag-outline">{pair} · {timeframe === 60 ? '1H' : `${timeframe}M SCALP`}</span>
               <span className="mf-tag-outline">● {inferCategory(pair)}</span>
+              <span className="mf-tag-outline" style={{ color: '#9a3412', borderColor: '#fed7aa', background: '#fff7ed' }}>⚡ 1M/5M SCALPER</span>
             </div>
 
             <div className="mf-hero-big-number">{primaryDisplayValue}</div>
@@ -1526,8 +1549,8 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
       <section className="mf-card">
         <div className="mf-pulse-toprow">
           <div className="mf-pulse-title-group">
-            <h2 className="mf-pulse-heading">{pair} Hourly Pulse</h2>
-            <span className="mf-pill-live-sm">● LIVE</span>
+            <h2 className="mf-pulse-heading">{pair} {timeframe === 60 ? '1H' : `${timeframe}m Scalp`} Pulse</h2>
+            <span className="mf-pill-live-sm">● LIVE {timeframe === 60 ? '1H' : `${timeframe}M`}</span>
             <span className="mf-tag-outline">Round {allDeliberations.length + candles.length}</span>
             <span
               className={`mf-tag-outline ${
@@ -1541,8 +1564,8 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
             <button
               type="button"
               className="mf-icon-refresh"
-              onClick={() => void fetchKrakenPulse(pair)}
-              title="Refresh Kraken Spot feed"
+              onClick={() => void fetchKrakenPulse(pair, timeframe)}
+              title="Refresh market feed"
             >
               <RefreshCw size={13} className={pulseLoading ? 'mf-spin' : ''} />
             </button>
