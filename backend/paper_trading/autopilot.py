@@ -341,9 +341,10 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
             if val is not None and val > 0:
                 prices[p] = val
 
-    # Dynamic profit-locking trailing stop for 1m/5m scalping:
-    # as soon as a position moves +0.06% into profit, ratchet stop_loss above
-    # average_entry (+0.03% covers round-trip fees); at +0.14% trail tightly at -0.07%.
+    # Multi-tier dynamic profit-locking & trend trailing stop:
+    # 1. At +0.12% gain: moves stop to Breakeven+ (+0.04% covers round-trip fees, zero-risk trade).
+    # 2. At +0.35% gain: locks in guaranteed profit (+0.18% above entry).
+    # 3. At +0.80%+: trails smoothly at 0.35% behind market price to capture large trend extensions.
     stops_ratcheted = False
     for pair, pos in working.get("positions", {}).items():
         mark = prices.get(pair)
@@ -355,12 +356,16 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
         current_stop = D(str(pos["stop_loss"])) if pos.get("stop_loss") else D("0")
         gain_pct = (mark - avg_entry) / avg_entry * D("100")
         new_stop = None
-        if gain_pct >= D("0.14"):
-            candidate = (mark * D("0.9993")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        if gain_pct >= D("0.80"):
+            candidate = (mark * D("0.9965")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
-        elif gain_pct >= D("0.06"):
-            candidate = (avg_entry * D("1.0003")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+        elif gain_pct >= D("0.35"):
+            candidate = (avg_entry * D("1.0018")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
+            if candidate > current_stop and candidate < mark:
+                new_stop = candidate
+        elif gain_pct >= D("0.12"):
+            candidate = (avg_entry * D("1.0004")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
             if candidate > current_stop and candidate < mark:
                 new_stop = candidate
         if new_stop is not None:
@@ -545,13 +550,15 @@ async def _execute_signal(
         avg_entry = D(str(current.get("average_entry", "0")))
         if avg_entry > 0 and price_now > avg_entry:
             gain_pct = (price_now - avg_entry) / avg_entry * D("100")
-            momentum_stall = (
+            # Strategic Profit Harvesting on open positions:
+            # Let high-conviction winners run; bank profit when a position reaches its target extension
+            # (>= +0.65% net) OR >= +0.25% net gain when momentum shows clear technical reversal.
+            trend_reversal = (
                 scalp["signal"] == TradeAction.SELL
-                or tech_1m.signal == TradeAction.SELL
-                or (tech_1m.rsi_14 is not None and tech_1m.rsi_14 >= 64.0)
-                or scalp["vel_1m"] < -0.15
+                and tech_1m.signal == TradeAction.SELL
+                and scalp["vel_1m"] < -0.20
             )
-            if gain_pct >= D("0.18") or (gain_pct >= D("0.07") and momentum_stall):
+            if gain_pct >= D("0.65") or (gain_pct >= D("0.25") and trend_reversal):
                 quantity = D(str(current["quantity"]))
                 updated, fill = simulate_order(
                     account,
@@ -559,11 +566,11 @@ async def _execute_signal(
                     side="SELL",
                     quantity=quantity,
                     reference_price=price_now,
-                    idempotency_key=f"autopilot:scalp-harvest:{pair}:{uuid.uuid4().hex}",
+                    idempotency_key=f"autopilot:strategic-harvest:{pair}:{uuid.uuid4().hex}",
                 )
                 saved = await _save_account(db, account, updated)
                 harvest_rationale = (
-                    f"[1M/5M SCALP PROFIT HARVEST] Banked +{gain_pct:.3f}% profit on {pair} "
+                    f"[STRATEGIC PROFIT HARVEST] Banked +{gain_pct:.3f}% gain on {pair} "
                     f"@ {fill.get('fill_price')} (realized P&L ${fill.get('realized_pnl_usd')})."
                 )
                 await _record_event(db, {
@@ -660,13 +667,32 @@ async def _execute_signal(
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        # Buffered 1m/5m scalp stop & brisk net-positive quick-harvest target
+        # Confidence-weighted dynamic lot sizing & strategic conviction scaling:
+        # High conviction (>= 80%): 28% to 35% lot allocation (conviction multiplier 1.35x, wide trend target)
+        # Strong conviction (70% - 79%): 18% to 22% lot allocation (standard multiplier 1.0x)
+        # Moderate conviction (58% - 69%): 12% to 15% lot allocation (exploratory multiplier 0.75x)
+        conf_float = float(confidence)
+        if conf_float >= 0.80:
+            conviction_pct = D("32")
+            risk_multiplier = D("1.35")
+            conviction_tier = "HIGH_CONVICTION"
+            target_distance = max(stop_distance * D("2.4"), entry_estimate * D("0.0120"))
+        elif conf_float >= 0.70:
+            conviction_pct = D("20")
+            risk_multiplier = D("1.0")
+            conviction_tier = "STRONG_CONVICTION"
+            target_distance = max(stop_distance * D("1.8"), entry_estimate * D("0.0070"))
+        else:
+            conviction_pct = D("14")
+            risk_multiplier = D("0.75")
+            conviction_tier = "MODERATE_CONVICTION"
+            target_distance = max(stop_distance * D("1.3"), entry_estimate * D("0.0035"))
+
         stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         stop = entry_estimate - stop_distance
-        target_distance = max(stop_distance * D("1.35"), entry_estimate * D("0.0022"))
         target = entry_estimate + target_distance
         policy = _active_risk_policy()
-        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "18"))
+        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", str(conviction_pct)))
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
@@ -678,7 +704,7 @@ async def _execute_signal(
             allocatable_cash,
             entry_estimate,
             stop,
-            policy.max_trade_risk_pct * D("0.995"),
+            policy.max_trade_risk_pct * risk_multiplier * D("0.995"),
             fee_rate,
         )
         if quantity <= 0 or (quantity * entry_estimate) < D("2"):
@@ -690,7 +716,7 @@ async def _execute_signal(
             side="BUY",
             quantity=quantity,
             reference_price=price,
-            idempotency_key=f"autopilot:scalp-entry:{pair}:{uuid.uuid4().hex}",
+            idempotency_key=f"autopilot:entry:{pair}:{uuid.uuid4().hex}",
             stop_loss_price=stop,
             take_profit_price=target,
             risk_engine=DeterministicRiskEngine(policy),
@@ -699,7 +725,9 @@ async def _execute_signal(
         saved = await _save_account(db, account, updated)
         await _record_event(db, {
             **fill,
-            "event_type": "autonomous_scalp_entry",
+            "event_type": "autonomous_trade_entry",
+            "conviction_tier": conviction_tier,
+            "conviction_allocation_pct": str(conviction_pct),
             "timeframe": scalp["timeframe"],
             "strategy_confidence": str(confidence),
             "strategy_rationale": rationale[:1000],
@@ -707,7 +735,16 @@ async def _execute_signal(
             "stop_loss": str(stop),
             "take_profit": str(target),
         })
-        return {"pair": pair, "decision": "BUY", "timeframe": scalp["timeframe"], "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
+        return {
+            "pair": pair,
+            "decision": "BUY",
+            "timeframe": scalp["timeframe"],
+            "conviction": conviction_tier,
+            "allocation_pct": str(conviction_pct),
+            "fill": fill,
+            "account_version": saved.get("version"),
+            "analysis": analysis,
+        }
 
     if action == TradeAction.SELL and current:
         if technical_signal != TradeAction.SELL:
