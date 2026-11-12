@@ -56,15 +56,99 @@ const SUPPORTED_EXCHANGES = [
   { id: 'custom', name: 'Custom CCXT Exchange', category: 'Any Supported Exchange', hasPassphrase: true },
 ];
 
-const POPULAR_MT_SERVERS = [
-  'ICMarketsSC-Live01',
-  'ICMarkets-Live02',
-  'Exness-Real10',
-  'Exness-Real12',
-  'Pepperstone-Live01',
-  'VantageFX-Live',
-  'XMGlobal-Real',
-  'FPMarkets-Live',
+export interface MtBrokerOption {
+  id: string;
+  name: string;
+  description: string;
+  defaultServer: string;
+  servers: string[];
+}
+
+export const SUPPORTED_MT_BROKERS: MtBrokerOption[] = [
+  {
+    id: 'ic_markets',
+    name: 'IC Markets',
+    description: 'Raw Spread ECN · Gold, Indices & FX',
+    defaultServer: 'ICMarketsSC-Live01',
+    servers: ['ICMarketsSC-Live01', 'ICMarkets-Live02', 'ICMarkets-Live03', 'ICMarketsSC-Demo01'],
+  },
+  {
+    id: 'pepperstone',
+    name: 'Pepperstone',
+    description: 'Razor Spreads · Global Regulated',
+    defaultServer: 'Pepperstone-Live01',
+    servers: ['Pepperstone-Live01', 'Pepperstone-Edge01', 'Pepperstone-Live02', 'Pepperstone-Demo01'],
+  },
+  {
+    id: 'exness',
+    name: 'Exness',
+    description: 'Instant Execution · Low Gold Spreads',
+    defaultServer: 'Exness-Real10',
+    servers: ['Exness-Real10', 'Exness-Real12', 'Exness-Real15', 'Exness-Trial'],
+  },
+  {
+    id: 'vantage',
+    name: 'Vantage Markets (Vantage FX)',
+    description: 'Pro ECN · Metals & Indices',
+    defaultServer: 'VantageFX-Live',
+    servers: ['VantageFX-Live', 'VantageMarkets-Live', 'VantageFX-Demo'],
+  },
+  {
+    id: 'xm',
+    name: 'XM Global',
+    description: 'Ultra Low Accounts · Worldwide',
+    defaultServer: 'XMGlobal-Real',
+    servers: ['XMGlobal-Real', 'XMGlobal-Real2', 'XMGlobal-Demo'],
+  },
+  {
+    id: 'fp_markets',
+    name: 'FP Markets',
+    description: 'Raw ECN · Metals & Commodities',
+    defaultServer: 'FPMarkets-Live',
+    servers: ['FPMarkets-Live', 'FPMarkets-Live02', 'FPMarkets-Demo'],
+  },
+  {
+    id: 'fxcm',
+    name: 'FXCM',
+    description: 'High Liquidity · FX & Stock Indices',
+    defaultServer: 'FXCM-Real',
+    servers: ['FXCM-Real', 'FXCM-US-Real', 'FXCM-Demo'],
+  },
+  {
+    id: 'avatrade',
+    name: 'AvaTrade',
+    description: 'Multi-Regulated Global Broker',
+    defaultServer: 'AvaTrade-Real',
+    servers: ['AvaTrade-Real', 'AvaTrade-Real2', 'AvaTrade-Demo'],
+  },
+  {
+    id: 'oanda',
+    name: 'OANDA',
+    description: 'Forex, Metals & CFD',
+    defaultServer: 'OANDA-Live',
+    servers: ['OANDA-Live', 'OANDA-Practice'],
+  },
+  {
+    id: 'roboforex',
+    name: 'RoboForex',
+    description: 'ECN / Prime Account MT5',
+    defaultServer: 'RoboForex-Pro',
+    servers: ['RoboForex-Pro', 'RoboForex-ECN', 'RoboForex-Demo'],
+  },
+  {
+    id: 'deriv',
+    name: 'Deriv',
+    description: 'Financial & Synthetic Accounts',
+    defaultServer: 'Deriv-Server',
+    servers: ['Deriv-Server', 'Deriv-Demo'],
+  },
+  {
+    id: 'custom',
+    name: 'Other / Custom Broker',
+    description: 'Type any custom MT4/MT5 broker server',
+    defaultServer: '',
+    servers: [],
+  },
 ];
 
 export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
@@ -90,12 +174,15 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
   const [showSecret, setShowSecret] = useState(false);
 
   // MetaTrader Form
+  const [selectedMtBrokerId, setSelectedMtBrokerId] = useState('ic_markets');
   const [mtPlatform, setMtPlatform] = useState<'MT5' | 'MT4'>('MT5');
   const [mtMethod, setMtMethod] = useState<'webhook_ea' | 'cloud'>('webhook_ea');
   const [mtServer, setMtServer] = useState('ICMarketsSC-Live01');
   const [mtLogin, setMtLogin] = useState('');
   const [mtPassword, setMtPassword] = useState('');
   const [mtLiveOrders, setMtLiveOrders] = useState(false);
+
+  const currentMtBroker = SUPPORTED_MT_BROKERS.find((b) => b.id === selectedMtBrokerId) || SUPPORTED_MT_BROKERS[0];
 
   const fetchStatus = async () => {
     try {
@@ -518,6 +605,41 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
         {/* ============================================================== */}
         {activeTab === 'meta_trader' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Primary Broker Selection Dropdown */}
+            <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
+                SELECT YOUR BROKER (MT4 / MT5)
+              </label>
+              <select
+                value={selectedMtBrokerId}
+                onChange={(e) => {
+                  const bId = e.target.value;
+                  setSelectedMtBrokerId(bId);
+                  const b = SUPPORTED_MT_BROKERS.find((item) => item.id === bId);
+                  if (b && b.defaultServer) {
+                    setMtServer(b.defaultServer);
+                  }
+                }}
+                className="mf-pair-input"
+                style={{ width: '100%', padding: '9px 12px', fontSize: '0.85rem', fontWeight: 700, background: '#ffffff', color: '#0f172a' }}
+              >
+                {SUPPORTED_MT_BROKERS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} — {b.description}
+                  </option>
+                ))}
+              </select>
+
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b' }}>
+                <span>
+                  Configuring for: <strong style={{ color: '#0f172a' }}>{currentMtBroker.name}</strong>
+                </span>
+                <span className="mf-tag-outline" style={{ fontSize: '0.64rem', padding: '1px 7px' }}>
+                  Default: {currentMtBroker.defaultServer || 'Custom Server'}
+                </span>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: '6px' }}>
               <button
                 type="button"
@@ -542,9 +664,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 <div style={{ background: '#f0f9ff', padding: '12px', borderRadius: '6px', border: '1px solid #bae6fd', fontSize: '0.76rem', color: '#0369a1' }}>
                   <div style={{ fontWeight: 800, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Download size={13} />
-                    <span>Recommended for IC Markets, Pepperstone, Exness, XM &amp; Vantage</span>
+                    <span>Recommended for {currentMtBroker.name}</span>
                   </div>
-                  No password sharing required. Download the pre-configured Expert Advisor, drag it onto your MetaTrader chart, and Vantage Point executes trades automatically!
+                  No password sharing required. Download the pre-configured Expert Advisor for {currentMtBroker.name}, drag it onto your MetaTrader chart, and Vantage Point executes trades automatically!
                 </div>
 
                 {/* 1-Click EA Download Card */}
@@ -555,7 +677,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                         VantagePointBridge.mq5
                       </div>
                       <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                        Automated execution bridge for MetaTrader 5 (Gold, Silver, Indices &amp; FX)
+                        Automated execution bridge for {currentMtBroker.name} (Gold, Silver, Indices &amp; FX)
                       </div>
                     </div>
                     <button
@@ -596,10 +718,10 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 {/* 3 Step Instruction Guide */}
                 <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
-                    SIMPLE 3-STEP SETUP IN METATRADER:
+                    SIMPLE 3-STEP SETUP IN {currentMtBroker.name.toUpperCase()} METATRADER:
                   </div>
                   <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.73rem', color: '#475569', lineHeight: 1.6 }}>
-                    <li>Open MT5 → Click <strong>Tools → Options → Expert Advisors</strong>.</li>
+                    <li>Open {currentMtBroker.name} MT5 → Click <strong>Tools → Options → Expert Advisors</strong>.</li>
                     <li>Check <strong>"Allow WebRequest for listed URL"</strong> and paste your Webhook URL above.</li>
                     <li>Drag <strong>VantagePointBridge</strong> onto any Gold (`XAUUSD`) or Index chart. Enable AutoTrading!</li>
                   </ol>
@@ -641,23 +763,47 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#334155', marginBottom: '3px' }}>
-                    BROKER SERVER NAME
+                    {currentMtBroker.name.toUpperCase()} SERVER NAME
                   </label>
-                  <input
-                    type="text"
-                    list="popular-mt-servers"
-                    value={mtServer}
-                    onChange={(e) => setMtServer(e.target.value)}
-                    placeholder="e.g. ICMarketsSC-Live01 or Exness-Real"
-                    className="mf-pair-input"
-                    style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem' }}
-                    required
-                  />
-                  <datalist id="popular-mt-servers">
-                    {POPULAR_MT_SERVERS.map((s) => (
-                      <option key={s} value={s} />
-                    ))}
-                  </datalist>
+                  {currentMtBroker.servers.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <select
+                        value={mtServer}
+                        onChange={(e) => setMtServer(e.target.value)}
+                        className="mf-pair-input"
+                        style={{ width: '100%', padding: '7px 8px', fontSize: '0.82rem', fontWeight: 600 }}
+                      >
+                        {currentMtBroker.servers.map((srv) => (
+                          <option key={srv} value={srv}>
+                            {srv}
+                          </option>
+                        ))}
+                        <option value="CUSTOM">Custom Server (Type below)...</option>
+                      </select>
+                      {(!currentMtBroker.servers.includes(mtServer) || mtServer === 'CUSTOM') && (
+                        <input
+                          type="text"
+                          value={mtServer === 'CUSTOM' ? '' : mtServer}
+                          onChange={(e) => setMtServer(e.target.value)}
+                          placeholder="Type your exact broker server name..."
+                          className="mf-pair-input"
+                          style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem' }}
+                          required
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      list="popular-mt-servers"
+                      value={mtServer}
+                      onChange={(e) => setMtServer(e.target.value)}
+                      placeholder="e.g. ICMarketsSC-Live01 or Exness-Real"
+                      className="mf-pair-input"
+                      style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem' }}
+                      required
+                    />
+                  )}
                 </div>
 
                 <div>
