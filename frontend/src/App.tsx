@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCcw, LayoutDashboard, Bot, Activity, Users, Shield, Smartphone, Tablet, Monitor, Bell } from 'lucide-react';
+import { RefreshCcw, LayoutDashboard, Bot, Activity, Users, Shield, Smartphone, Tablet, Monitor, Bell, Server } from 'lucide-react';
 
 import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
@@ -8,6 +8,7 @@ import { API_BASE_URL } from './config';
 import PaperTrading from './pages/PaperTrading';
 import MirofishTerminal from './components/MirofishTerminal';
 import { NotificationCenter } from './components/NotificationCenter';
+import { BrokerConnectionModal, type BrokerStatus } from './components/BrokerConnectionModal';
 
 export const FOREX_PAIRS = [
   'EUR/USD',
@@ -161,6 +162,8 @@ const App: React.FC = () => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [seenNotifIds, setSeenNotifIds] = useState<Set<string>>(new Set());
+  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+  const [brokerInfo, setBrokerInfo] = useState<BrokerStatus | null>(null);
   const [status, setStatus] = useState<any>(null);
   const [deliberations, setDeliberations] = useState<any[]>([]);
   const [boardroomLoading, setBoardroomLoading] = useState(true);
@@ -201,6 +204,18 @@ const App: React.FC = () => {
       console.error(err);
     } finally {
       setBoardroomLoading(false);
+    }
+  }, []);
+
+  const fetchBroker = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/trading/broker/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setBrokerInfo(data);
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -245,12 +260,14 @@ const App: React.FC = () => {
   useEffect(() => {
     void fetchStatus();
     void fetchBoardroom();
+    void fetchBroker();
     const interval = window.setInterval(() => {
       void fetchStatus();
       void fetchBoardroom();
+      void fetchBroker();
     }, 15000);
     return () => window.clearInterval(interval);
-  }, [fetchStatus, fetchBoardroom]);
+  }, [fetchStatus, fetchBoardroom, fetchBroker]);
 
   useEffect(() => {
     const tick = () => setUtcClock(`${new Date().toISOString().slice(11, 19)} UTC`);
@@ -315,6 +332,15 @@ const App: React.FC = () => {
     <div className={`mf-shell ${viewportMode === 'mobile' ? 'mf-force-mobile' : viewportMode === 'tablet' ? 'mf-force-tablet' : ''}`}>
       <ChatBot />
       <NotificationCenter isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
+      <BrokerConnectionModal
+        isOpen={isBrokerModalOpen}
+        onClose={() => setIsBrokerModalOpen(false)}
+        apiBaseUrl={API_BASE_URL}
+        onBrokerChanged={() => {
+          void fetchBroker();
+          void fetchStatus();
+        }}
+      />
 
       <div className="mf-container">
         {/* ===================================================================
@@ -422,6 +448,32 @@ const App: React.FC = () => {
                 </optgroup>
               </select>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsBrokerModalOpen(true)}
+              className="mf-status-round"
+              style={{
+                cursor: 'pointer',
+                borderColor: brokerInfo?.mode !== 'paper' ? '#86efac' : '#cbd5e1',
+                background: brokerInfo?.mode !== 'paper' ? '#f0fdf4' : '#f8fafc',
+                color: brokerInfo?.mode !== 'paper' ? '#15803d' : '#334155',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontWeight: 700,
+              }}
+              title="Connect Exchange API Key or MetaTrader 4/5"
+            >
+              <Server size={11} style={{ color: brokerInfo?.mode !== 'paper' ? '#16a34a' : '#2563eb' }} />
+              <span>
+                {brokerInfo?.mode === 'api_key'
+                  ? `BROKER: ${(brokerInfo.provider || 'API').toUpperCase()}`
+                  : brokerInfo?.mode === 'meta_trader'
+                  ? `BROKER: ${brokerInfo.provider || 'MT5'}`
+                  : 'CONNECT BROKER'}
+              </span>
+            </button>
 
             {paperEquity !== null && (
               <button
