@@ -12,6 +12,8 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
   const [status, setStatus] = useState<any>(null);
   const [scanning, setScanning] = useState(false);
   const [lastDecision, setLastDecision] = useState<any>(null);
+  const [pair, setPair] = useState('BTC/USD');
+  const majorPairs = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD', 'DOGE/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD', 'BCH/USD'];
 
   useEffect(() => {
     fetchStatus();
@@ -45,7 +47,11 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
   const runScanner = async () => {
     setScanning(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/trading/scan`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/trading/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pair }),
+      });
       if (!res.ok) {
         let message = `Server Error (${res.status})`;
         let requestId = '';
@@ -63,7 +69,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
         throw new Error(requestId ? `${message} (Reference: ${requestId})` : message);
       }
       const data = await res.json();
-      setLastDecision({ ...data.decision, signal_quality: data.signal_quality_report?.signal_quality_index, whipsaw_risk: data.signal_quality_report?.whipsaw_risk });
+      setLastDecision({ ...data.decision, pair: data.pair, signal_quality: data.signal_quality_report?.signal_quality_index, whipsaw_risk: data.signal_quality_report?.whipsaw_risk });
       await fetchStatus();
     } catch (err: any) {
       console.error('Scan Error:', err);
@@ -108,6 +114,20 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <ShoppingCart size={20} color="var(--warning)" /> Trade Ledger (read-only)
               </h3>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <input
+                  list="scan-pairs"
+                  value={pair}
+                  onChange={e => setPair(e.target.value.toUpperCase())}
+                  disabled={scanning}
+                  pattern="[A-Z0-9]+/[A-Z0-9]+"
+                  title="Kraken pair, e.g. ETH/USD"
+                  aria-label="Market pair to scan"
+                  style={{ background: 'var(--surface-light)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)', padding: '0.6rem 0.75rem', width: '140px', fontWeight: 600, marginRight: '0.75rem' }}
+                />
+                <datalist id="scan-pairs">
+                  {majorPairs.map(option => <option key={option} value={option} />)}
+                </datalist>
               <button 
                 className={`btn btn-primary ${scanning ? 'loading' : ''}`} 
                 onClick={runScanner}
@@ -115,6 +135,7 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
               >
                 <RefreshCcw size={16} /> {scanning ? 'Scanning Market...' : 'Run Market Analysis'}
               </button>
+              </div>
             </div>
             
             <div style={{ overflowX: 'auto' }}>
