@@ -206,6 +206,15 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleModalClose = () => {
+    setApiKey('');
+    setApiSecret('');
+    setPassphrase('');
+    setMtPassword('');
+    setTestResult(null);
+    onClose();
+  };
+
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(id);
@@ -256,6 +265,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
         }),
       });
       if (res.ok) {
+        setApiKey('');
+        setApiSecret('');
+        setPassphrase('');
         await fetchStatus();
         onBrokerChanged?.();
         alert(`Successfully connected ${exchange.toUpperCase()} broker!`);
@@ -313,6 +325,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
         }),
       });
       if (res.ok) {
+        setMtPassword('');
         await fetchStatus();
         onBrokerChanged?.();
         alert(`MetaTrader ${mtPlatform} bridge activated!`);
@@ -349,7 +362,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
   const selectedExch = SUPPORTED_EXCHANGES.find((e) => e.id === exchange);
 
   return (
-    <div className="mf-modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+    <div className="mf-modal-overlay" onClick={handleModalClose} style={{ zIndex: 9999 }}>
       <div
         className="mf-modal-card"
         onClick={(e) => e.stopPropagation()}
@@ -368,7 +381,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
               Non-custodial trading · Connect API Keys or MetaTrader 4 / 5 bridges
             </p>
           </div>
-          <button type="button" onClick={onClose} className="mf-btn-ghost-sm" style={{ padding: '4px' }}>
+          <button type="button" onClick={handleModalClose} className="mf-btn-ghost-sm" style={{ padding: '4px' }}>
             <X size={16} />
           </button>
         </div>
@@ -514,6 +527,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 placeholder="Paste your exchange API Key..."
                 className="mf-pair-input"
                 style={{ width: '100%', padding: '7px 10px', fontSize: '0.82rem', fontFamily: 'monospace' }}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 required
               />
             </div>
@@ -539,6 +555,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 placeholder="Paste your exchange API Secret..."
                 className="mf-pair-input"
                 style={{ width: '100%', padding: '7px 10px', fontSize: '0.82rem', fontFamily: 'monospace' }}
+                autoComplete="new-password"
+                autoCorrect="off"
+                spellCheck={false}
                 required
               />
             </div>
@@ -554,6 +573,7 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 placeholder="e.g. My Primary Trading Account"
                 className="mf-pair-input"
                 style={{ width: '100%', padding: '7px 10px', fontSize: '0.82rem' }}
+                autoComplete="off"
               />
             </div>
 
@@ -569,6 +589,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                   placeholder="Optional passphrase..."
                   className="mf-pair-input"
                   style={{ width: '100%', padding: '7px 10px', fontSize: '0.82rem' }}
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
             )}
@@ -787,6 +810,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                       placeholder="e.g. 5123456"
                       className="mf-pair-input"
                       style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem' }}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
                       required
                     />
                   </div>
@@ -848,6 +874,9 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                     placeholder="MetaTrader account password..."
                     className="mf-pair-input"
                     style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem' }}
+                    autoComplete="new-password"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                 </div>
 
