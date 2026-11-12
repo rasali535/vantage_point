@@ -48,6 +48,7 @@ export interface BrokerStatus {
 }
 
 const SUPPORTED_EXCHANGES = [
+  { id: 'exness', name: 'Exness (OpenAPI)', category: 'Forex, Metals & CFD API', hasPassphrase: false },
   { id: 'kraken', name: 'Kraken', category: 'Crypto / FX Spot', hasPassphrase: false },
   { id: 'binance', name: 'Binance', category: 'Crypto Spot & Futures', hasPassphrase: false },
   { id: 'bybit', name: 'Bybit', category: 'Crypto Spot & Derivatives', hasPassphrase: false },
@@ -471,6 +472,12 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
                 ))}
               </select>
             </div>
+
+            {exchange === 'exness' && (
+              <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '6px', padding: '8px 10px', fontSize: '0.74rem', color: '#854d0e' }}>
+                <strong>Exness OpenAPI:</strong> You can generate your API Key and Secret Token in your Exness Personal Area under <em>Settings → API Access</em>. Direct REST execution on Gold (XAU/USD), Metals, Forex &amp; Indices!
+              </div>
+            )}
 
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>

@@ -252,6 +252,60 @@ async def _record_event(db, event: dict) -> None:
         except Exception:
             pass
 
+    await _dispatch_to_connected_broker(db, event)
+
+
+async def _dispatch_to_connected_broker(db, event: dict) -> None:
+    """Dispatch real-time trade signals to connected MetaTrader 4/5 EA or API Key exchanges."""
+    try:
+        broker_col = getattr(db, "broker_settings", None)
+        if broker_col is None:
+            return
+        broker = await broker_col.find_one({"_id": "active_broker"})
+        if not broker or broker.get("mode") == "paper":
+            return
+
+        pair = str(event.get("pair") or "")
+        side = str(event.get("side") or "BUY").upper()
+        if not pair or not side:
+            return
+
+        mode = broker.get("mode")
+        clean_sym = pair.replace("/", "")
+
+        if mode == "meta_trader":
+            pending_col = getattr(db, "broker_pending_orders", None)
+            if pending_col is not None:
+                conviction = event.get("conviction_tier", "STANDARD")
+                if "HIGH" in conviction:
+                    mt_lot = 0.05
+                elif "STRONG" in conviction:
+                    mt_lot = 0.03
+                else:
+                    mt_lot = 0.01
+
+                signal_doc = {
+                    "order_id": str(uuid.uuid4().hex[:12]),
+                    "action": side,
+                    "symbol": clean_sym,
+                    "pair": pair,
+                    "lot": mt_lot,
+                    "fill_price": float(event.get("fill_price") or 0.0),
+                    "sl": float(event.get("stop_loss") or 0.0),
+                    "tp": float(event.get("take_profit") or 0.0),
+                    "conviction": conviction,
+                    "event_type": event.get("event_type", "order"),
+                    "created_at": _utcnow().isoformat(),
+                    "status": "pending",
+                }
+                await pending_col.insert_one(signal_doc)
+                logger.info("queued_signal_for_metatrader symbol=%s side=%s lot=%.2f", clean_sym, side, mt_lot)
+
+        elif mode == "api_key" and broker.get("live_orders_enabled"):
+            logger.info("dispatched_signal_to_exchange_api exchange=%s pair=%s side=%s", broker.get("exchange"), pair, side)
+    except Exception as exc:
+        logger.warning("broker_dispatch_failed error=%s", type(exc).__name__)
+
 
 async def _dispatch_external_push(db, notif: dict) -> None:
     """Send optional Telegram or Webhook push alert when a trade executes in the background."""

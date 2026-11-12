@@ -1208,9 +1208,33 @@ async def poll_meta_trader_orders(x_webhook_token: str | None = Header(default=N
         {"_id": "active_broker"},
         {"$set": {"last_poll_at": now_iso}}
     )
+
+    # Check for pending orders queued by the autonomous trading engine
+    pending_orders = await db.broker_pending_orders.find({"status": "pending"}).sort("created_at", 1).limit(5).to_list(length=5)
+    formatted = []
+    ids_to_update = []
+    for ord_doc in pending_orders:
+        formatted.append({
+            "id": ord_doc.get("order_id") or str(ord_doc["_id"]),
+            "action": ord_doc.get("action", "BUY"),
+            "symbol": ord_doc.get("symbol", "XAUUSD"),
+            "lot": ord_doc.get("lot", 0.01),
+            "price": ord_doc.get("fill_price", 0.0),
+            "sl": ord_doc.get("sl", 0.0),
+            "tp": ord_doc.get("tp", 0.0),
+            "comment": "VP AI " + str(ord_doc.get("conviction", "Trade"))[:8],
+        })
+        ids_to_update.append(ord_doc["_id"])
+
+    if ids_to_update:
+        await db.broker_pending_orders.update_many(
+            {"_id": {"$in": ids_to_update}},
+            {"$set": {"status": "dispatched", "dispatched_at": now_iso}}
+        )
+
     return {
-        "status": "idle",
-        "orders": [],
+        "status": "orders_pending" if formatted else "idle",
+        "orders": formatted,
         "server_time": now_iso,
-        "message": "Handshake active. Ready for signals.",
+        "message": f"{len(formatted)} orders dispatched to MT5 terminal" if formatted else "Handshake active. Ready for signals.",
     }
