@@ -8,7 +8,22 @@ import { API_BASE_URL } from './config';
 import PaperTrading from './pages/PaperTrading';
 import MirofishTerminal from './components/MirofishTerminal';
 
-const MAJOR_PAIRS = [
+export const FOREX_PAIRS = [
+  'EUR/USD',
+  'GBP/USD',
+  'USD/JPY',
+  'AUD/USD',
+  'USD/CAD',
+  'USD/CHF',
+  'EUR/GBP',
+  'EUR/JPY',
+  'EUR/CHF',
+  'EUR/AUD',
+  'EUR/CAD',
+  'AUD/JPY',
+];
+
+export const CRYPTO_PAIRS = [
   'BTC/USD',
   'ETH/USD',
   'SOL/USD',
@@ -20,6 +35,8 @@ const MAJOR_PAIRS = [
   'DOT/USD',
   'BCH/USD',
 ];
+
+export const ALL_TRADING_PAIRS = [...FOREX_PAIRS, ...CRYPTO_PAIRS];
 
 const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]; loading: boolean; onRefresh: () => void }) => {
   return (
@@ -37,11 +54,11 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
 
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '10px' }}>
           {[
-            { name: 'Market Intelligence', status: 'Meta AI · verified market context', color: '#2563eb' },
+            { name: 'Market Intelligence', status: 'Meta AI · verified FX & crypto context', color: '#2563eb' },
             { name: 'Technical Analyst', status: 'EMA · RSI · ATR calculations', color: '#10b981' },
             { name: 'Strategy', status: 'Meta AI · BUY / SELL / HOLD proposal', color: '#2563eb' },
             { name: 'Risk Manager', status: 'Meta AI advisory · deterministic limits', color: '#9a3412' },
-            { name: 'Execution', status: 'Risk preflight · order submission locked', color: '#b45309' },
+            { name: 'Execution', status: 'Risk preflight · paper simulation gate', color: '#b45309' },
             { name: 'Performance', status: 'Confirmed closed trades only', color: '#10b981' },
           ].map((agent) => (
             <div key={agent.name} className="mf-subcard">
@@ -103,7 +120,7 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
                 <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>RISK ASSESSMENT</span><br /><strong>{risk.summary || 'Not available'}</strong></div>
                 <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>EXECUTION GATE</span><br /><strong>{execution.status || 'Not evaluated'}</strong></div>
                 <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>PERF SAMPLE</span><br /><strong>{performance.sample_size ?? 0} confirmed trades</strong></div>
-                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>EXECUTION</span><br /><strong style={{ color: '#9a3412' }}>Disabled · research only</strong></div>
+                <div className="mf-subcard"><span style={{ color: 'var(--text-muted)' }}>EXECUTION</span><br /><strong style={{ color: '#9a3412' }}>Paper Sim · Live Locked</strong></div>
               </div>
               <div style={{ marginTop: '0.65rem', fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                 STRATEGY CONFIDENCE: {typeof strategy.confidence === 'number' ? `${(strategy.confidence * 100).toFixed(0)}%` : '—'}
@@ -121,7 +138,7 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<any>(null);
   const [deliberations, setDeliberations] = useState<any[]>([]);
   const [boardroomLoading, setBoardroomLoading] = useState(true);
-  const [pair, setPair] = useState('BTC/USD');
+  const [pair, setPair] = useState('EUR/USD');
   const [scanning, setScanning] = useState(false);
   const [lastScanDecision, setLastScanDecision] = useState<any>(null);
   const [scanBanner, setScanBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -213,7 +230,7 @@ const App: React.FC = () => {
       });
       setScanBanner({
         type: 'ok',
-        text: `Six-agent scan completed for ${data.pair}: Proposed ${data.decision?.action || 'HOLD'} (${Math.round((data.decision?.confidence || 0) * 100)}% confidence). Execution remains locked.`,
+        text: `Six-agent scan completed for ${data.pair}: Proposed ${data.decision?.action || 'HOLD'} (${Math.round((data.decision?.confidence || 0) * 100)}% confidence).`,
       });
       await Promise.all([fetchStatus(), fetchBoardroom()]);
     } catch (err: any) {
@@ -248,7 +265,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <div className="mf-brand-eyebrow">
-                VANTAGE POINT SIMULATION · RELATIONSHIP-GRAPH INTELLIGENCE
+                VANTAGE POINT SIMULATION · FOREX &amp; CRYPTO RELATIONSHIP GRAPH
               </div>
               <div className="mf-brand-title">
                 MUSE SPARK 1.3 <span className="mf-brand-sep">·</span>{' '}
@@ -261,7 +278,7 @@ const App: React.FC = () => {
           <nav className="mf-nav-pills" aria-label="Workspace navigation">
             {[
               { id: 'terminal', label: 'TERMINAL BOARD' },
-              { id: 'paper', label: 'PAPER DESK' },
+              { id: 'paper', label: 'PAPER DESK & BOT' },
               { id: 'trading', label: 'AI SCANNER' },
               { id: 'boardroom', label: 'BOARDROOM' },
               { id: 'audit', label: 'AUDIT TRAIL' },
@@ -279,24 +296,31 @@ const App: React.FC = () => {
 
           {/* Right Status & Pair Controls */}
           <div className="mf-topbar-right">
-            <div className="mf-pair-control">
-              <input
-                list="mf-pair-options"
-                value={pair}
-                onChange={(e) => setPair(e.target.value.toUpperCase())}
+            <div className="mf-pair-control" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <select
+                value={ALL_TRADING_PAIRS.includes(pair) ? pair : 'CUSTOM'}
+                onChange={(e) => {
+                  if (e.target.value !== 'CUSTOM') setPair(e.target.value);
+                }}
                 className="mf-pair-input"
-                aria-label="Active Kraken pair"
-                title="Select or type a Kraken pair (e.g. BTC/USD)"
-              />
-              <datalist id="mf-pair-options">
-                {MAJOR_PAIRS.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
+                style={{ width: '115px', cursor: 'pointer' }}
+                aria-label="Select Forex or Crypto pair"
+              >
+                <optgroup label="Forex Pairs">
+                  {FOREX_PAIRS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Crypto Pairs">
+                  {CRYPTO_PAIRS.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </optgroup>
+              </select>
             </div>
 
             <span className="mf-status-live">
-              <i /> LIVE · ANALYSIS ONLY
+              <i /> LIVE · FOREX &amp; SPOT
             </span>
             <span className="mf-status-round">ROUND #{totalRounds || 1}</span>
             <span className="mf-status-clock">{utcClock}</span>
@@ -349,12 +373,12 @@ const App: React.FC = () => {
               <i /> AGENT ONLINE
             </span>
             <span>MODEL: MUSE-SPARK-1.3</span>
-            <span>TARGET: KRAKEN SPOT · {totalRounds} RECORDS</span>
+            <span>MARKETS: 12 FOREX + 10 CRYPTO · {totalRounds} RECORDS</span>
             <span>RISK POLICY: {(status?.risk_policy_status || 'CONFIGURED').toUpperCase()}</span>
-            <span className="mf-footer-blue">EXECUTION: LOCKED</span>
+            <span className="mf-footer-blue">MODE: PAPER &amp; RESEARCH</span>
           </div>
           <div className="mf-footer-right">
-            STACK: VANTAGE-POINT · META-AI · KRAKEN
+            STACK: VANTAGE-POINT · META-AI · KRAKEN FX
           </div>
         </footer>
       </div>

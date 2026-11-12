@@ -85,12 +85,28 @@ class PaperTradingTests(unittest.TestCase):
         self.assertGreater(Decimal(account["realized_pnl"]), Decimal("0"))
 
     def test_non_usd_pair_rejected(self):
-        with self.assertRaisesRegex(PaperTradeError, "USD-quoted"):
+        with self.assertRaisesRegex(PaperTradeError, "Forex pairs and USD-quoted"):
             simulate_order(
                 self.account, pair="BTC/EUR", side="BUY", quantity="0.01",
                 reference_price="50000", idempotency_key="eur",
                 stop_loss_price="49000", risk_engine=DeterministicRiskEngine(policy()),
             )
+
+    def test_forex_pairs_are_supported_in_paper_mode(self):
+        for fx_pair, ref_price, stop in (
+            ("EUR/USD", "1.1080", "1.1000"),
+            ("GBP/USD", "1.3260", "1.3180"),
+            ("USD/JPY", "157.20", "156.20"),
+            ("EUR/JPY", "174.10", "173.10"),
+        ):
+            account, fill = simulate_order(
+                self.account, pair=fx_pair, side="BUY", quantity="1.0",
+                reference_price=ref_price, idempotency_key=f"fx-{fx_pair}",
+                stop_loss_price=stop, risk_engine=DeterministicRiskEngine(policy()),
+            )
+            self.assertEqual(fill["status"], "filled")
+            self.assertEqual(fill["pair"], fx_pair)
+            self.assertIn(fx_pair, account["positions"])
 
     def test_summary_is_explicitly_paper_and_not_live(self):
         summary = account_summary(self.account)

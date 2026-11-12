@@ -26,7 +26,7 @@ from paper_trading.engine import (
     PaperTradeError, account_summary, initial_account, simulate_order,
     evaluate_protective_triggers,
 )
-from paper_trading.autopilot import autopilot_status, set_autopilot_enabled
+from paper_trading.autopilot import autopilot_status, run_autopilot_once, set_autopilot_enabled
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -246,7 +246,7 @@ async def scan_and_analyze(pair: str | None = None) -> Dict[str, Any]:
     final_report = whipsaw_protection.evaluate_signal_quality(
         candles, closed_trades, cycle.strategy.action.value
     )
-    if final_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"} and cycle.strategy.action != TradeAction.HOLD:
+    if final_report.get("action_recommendation") == "FORCE_HOLD" and cycle.strategy.action != TradeAction.HOLD:
         cycle.strategy.action = TradeAction.HOLD
         cycle.strategy.rationale = (
             f"[DETERMINISTIC WHIPSAW FILTER] Changed proposal to HOLD. "
@@ -406,15 +406,37 @@ async def _record_paper_audit(db, fill: dict) -> None:
             "_id": f"paper:{fill['idempotency_key']}",
             "timestamp": fill["timestamp"],
             "agent": "paper_execution",
-            "action": f"Simulated {fill['side']} {fill['pair']}",
+            "action": f"Simulated {fill['side']} {fill['pair']} ({fill.get('quantity')} @ {fill.get('fill_price')})",
+            "reasoning": f"Paper simulation fill recorded for {fill['pair']}. Live order execution remains disabled.",
             "status": "paper_fill_recorded",
             "execution_enabled": False,
             "exchange_order_submitted": False,
             "idempotency_key": fill["idempotency_key"],
         })
     except DuplicateKeyError:
-        # A retry after a committed account update must not duplicate the audit event.
-        return
+        pass
+    ledger_col = getattr(db, "trading_ledger", None)
+    if ledger_col is not None:
+        try:
+            await ledger_col.insert_one({
+                "_id": f"paper_ledger:{fill['idempotency_key']}",
+                "id": fill["idempotency_key"],
+                "order_id": fill["idempotency_key"],
+                "symbol": fill["pair"],
+                "pair": fill["pair"],
+                "side": str(fill["side"]).lower(),
+                "volume": fill.get("quantity"),
+                "price": fill.get("fill_price"),
+                "status": "paper_filled",
+                "execution_mode": "paper",
+                "exchange_confirmed": False,
+                "exchange_order_submitted": False,
+                "realized_pnl_usd": fill.get("realized_pnl_usd"),
+                "timestamp": fill["timestamp"],
+                "time": fill["timestamp"],
+            })
+        except Exception:
+            pass
 
 
 async def _get_or_create_paper_account(db):
@@ -483,6 +505,16 @@ async def submit_paper_order(
             for held_pair in account.get("positions", {}).keys():
                 held_ticker = await get_kraken_agent().get_ticker(held_pair)
                 portfolio_prices[held_pair] = held_ticker["last"]
+
+            stop_loss_price = payload.stop_loss_price
+            take_profit_price = payload.take_profit_price
+            if payload.side == "BUY" and (stop_loss_price is None or not str(stop_loss_price).strip()):
+                from decimal import Decimal
+                ref_dec = Decimal(str(reference_price))
+                stop_loss_price = str((ref_dec * Decimal("0.992")).quantize(Decimal("0.00001")))
+                if take_profit_price is None or not str(take_profit_price).strip():
+                    take_profit_price = str((ref_dec * Decimal("1.016")).quantize(Decimal("0.00001")))
+
             updated, fill = simulate_order(
                 account,
                 pair=payload.pair,
@@ -490,8 +522,8 @@ async def submit_paper_order(
                 quantity=payload.quantity,
                 reference_price=reference_price,
                 idempotency_key=payload.idempotency_key,
-                stop_loss_price=payload.stop_loss_price,
-                take_profit_price=payload.take_profit_price,
+                stop_loss_price=stop_loss_price,
+                take_profit_price=take_profit_price,
                 risk_engine=DeterministicRiskEngine(),
                 portfolio_prices=portfolio_prices,
             )
@@ -577,12 +609,26 @@ async def get_paper_autopilot_status(x_paper_token: str | None = Header(default=
 
 @router.post("/paper/autopilot/start")
 async def start_paper_autopilot(x_paper_token: str | None = Header(default=None)):
+    import asyncio
     _require_paper_access(x_paper_token)
     db = await get_database()
     try:
-        return await set_autopilot_enabled(db, True)
+        result = await set_autopilot_enabled(db, True)
+        asyncio.create_task(run_autopilot_once(db))
+        return result
     except PaperTradeError as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
+
+
+@router.post("/paper/autopilot/run")
+async def run_paper_autopilot_now(x_paper_token: str | None = Header(default=None)):
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    try:
+        await set_autopilot_enabled(db, True)
+        return await run_autopilot_once(db)
+    except PaperTradeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/paper/autopilot/stop")

@@ -59,10 +59,23 @@ class TechnicalAnalystAgent:
                     trend = "uptrend"
                 elif fast < slow:
                     trend = "downtrend"
-            if trend == "uptrend" and rsi is not None and 45 <= rsi <= 68:
-                signal = TradeAction.BUY
-            elif trend == "downtrend" and rsi is not None and 32 <= rsi <= 55:
-                signal = TradeAction.SELL
+            if trend == "uptrend" and rsi is not None:
+                if rsi <= 72:
+                    signal = TradeAction.BUY
+                elif rsi > 75:
+                    signal = TradeAction.SELL
+            elif trend == "downtrend" and rsi is not None:
+                if rsi < 33 and len(closes) >= 2 and closes[-1] >= closes[-2]:
+                    signal = TradeAction.BUY
+                elif rsi >= 28:
+                    signal = TradeAction.SELL
+                else:
+                    signal = TradeAction.BUY
+            elif rsi is not None:
+                if rsi < 38:
+                    signal = TradeAction.BUY
+                elif rsi > 68:
+                    signal = TradeAction.SELL
             evidence = [f"EMA9={fast:.4f}", f"EMA21={slow:.4f}"] if fast and slow else []
             if rsi is not None:
                 evidence.append(f"RSI14={rsi:.2f}")

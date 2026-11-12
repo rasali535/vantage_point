@@ -35,26 +35,55 @@ interface KrakenCandle {
   volume: number;
 }
 
-const fmtUsd = (val: number | null | undefined, decimals = 2) => {
+const autoDecimals = (val: number) => {
+  const abs = Math.abs(val);
+  if (abs === 0) return 2;
+  if (abs < 0.05) return 5;
+  if (abs < 10) return 5;
+  if (abs < 500) return 3;
+  return 2;
+};
+
+const fmtUsd = (val: number | null | undefined, decimals?: number) => {
   if (val === null || val === undefined || Number.isNaN(val)) return '—';
+  const d = decimals !== undefined ? decimals : autoDecimals(val);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: d,
+    maximumFractionDigits: d,
   }).format(val);
 };
 
-const fmtSignedUsd = (val: number | null | undefined, decimals = 2) => {
+const fmtSignedUsd = (val: number | null | undefined, decimals?: number) => {
   if (val === null || val === undefined || Number.isNaN(val)) return '—';
+  const d = decimals !== undefined ? decimals : autoDecimals(val);
   const sign = val >= 0 ? '+' : '-';
-  return `${sign}${fmtUsd(Math.abs(val), decimals)}`;
+  return `${sign}${fmtUsd(Math.abs(val), d)}`;
 };
+
+const QUICK_PAIRS = [
+  'EUR/USD',
+  'GBP/USD',
+  'USD/JPY',
+  'AUD/USD',
+  'USD/CAD',
+  'USD/CHF',
+  'EUR/GBP',
+  'EUR/JPY',
+  'EUR/CHF',
+  'AUD/JPY',
+  'BTC/USD',
+  'ETH/USD',
+  'SOL/USD',
+  'XRP/USD',
+];
 
 const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
   status,
   deliberations,
   pair,
+  onPairChange,
   scanning,
   onRunScan,
   lastScanDecision,
@@ -459,7 +488,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
         annotations.push({
           x: pt.x,
           y: pt.y,
-          label: fmtSignedUsd(delta, Math.abs(delta) < 10 ? 2 : 0),
+          label: fmtSignedUsd(delta),
           isBull: delta >= 0,
         });
       }
@@ -480,13 +509,13 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
     typeof status?.balance?.USD === 'number'
       ? fmtUsd(status.balance.USD, 0)
       : ticker
-      ? fmtUsd(ticker.last, ticker.last >= 100 ? 2 : 4)
+      ? fmtUsd(ticker.last)
       : '—';
 
   const primaryDisplaySub =
     typeof status?.balance?.USD === 'number'
       ? 'verified kraken balance'
-      : 'live kraken spot reference · analysis only';
+      : 'live kraken forex & spot feed';
 
   const convergenceSegments = 16;
   const activeSegments = Math.round(signalStats.avgConfidence * convergenceSegments);
@@ -497,6 +526,25 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           BAND 1: DUAL HERO CARD (PORTFOLIO/MARKET HERO + TOP SIGNALS CAROUSEL)
           ===================================================================== */}
       <section className="mf-card mf-band-hero">
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid #eef2f6' }}>
+          <span className="mf-eyebrow-text" style={{ alignSelf: 'center', marginRight: '4px' }}>MARKETS:</span>
+          {QUICK_PAIRS.map((qp) => (
+            <button
+              key={qp}
+              type="button"
+              onClick={() => onPairChange(qp)}
+              className="mf-pill-action"
+              style={
+                qp === pair
+                  ? { background: '#111827', color: '#ffffff', borderColor: '#111827' }
+                  : undefined
+              }
+            >
+              {qp}
+            </button>
+          ))}
+        </div>
+
         <div className="mf-hero-grid">
           {/* Left Column */}
           <div className="mf-hero-left">
@@ -1215,7 +1263,11 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                       row.side === 'ask' ? 'mf-ob-price ask' : 'mf-ob-price bid'
                     }
                   >
-                    {row.price >= 100 ? row.price.toFixed(0) : row.price.toFixed(3)}
+                    {row.price >= 500
+                      ? row.price.toFixed(0)
+                      : row.price >= 10
+                      ? row.price.toFixed(3)
+                      : row.price.toFixed(5)}
                   </span>
                   <span className="mf-ob-size">{row.size.toFixed(1)}</span>
                 </div>
@@ -1330,7 +1382,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                     textAnchor="end"
                     fontFamily="monospace"
                   >
-                    {fmtUsd(t, t >= 100 ? 0 : 3)}
+                    {fmtUsd(t, t >= 500 ? 0 : t >= 10 ? 3 : 5)}
                   </text>
                 );
               })}

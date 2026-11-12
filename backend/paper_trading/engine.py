@@ -14,6 +14,18 @@ from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
 D = Decimal
 QTY_STEP = D("0.00000001")
 MONEY_STEP = D("0.01")
+SUPPORTED_FIAT_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"}
+
+
+def is_supported_paper_pair(pair: Any) -> bool:
+    if not isinstance(pair, str) or "/" not in pair:
+        return False
+    base, sep, quote = pair.strip().upper().partition("/")
+    if not sep or not base.isalnum() or not quote.isalnum() or base == quote:
+        return False
+    if quote == "USD":
+        return True
+    return base in SUPPORTED_FIAT_CURRENCIES and quote in SUPPORTED_FIAT_CURRENCIES
 
 
 class PaperTradeError(ValueError):
@@ -89,8 +101,9 @@ def simulate_order(
     """Return (new account, simulated fill); caller persists atomically."""
     if not isinstance(idempotency_key, str) or not idempotency_key.strip() or len(idempotency_key) > 128:
         raise PaperTradeError("A non-empty idempotency key of at most 128 characters is required.")
-    if not isinstance(pair, str) or "/" not in pair or pair.split("/")[-1] != "USD":
-        raise PaperTradeError("Only USD-quoted spot pairs are supported in paper mode.")
+    if not is_supported_paper_pair(pair):
+        raise PaperTradeError("Only Forex pairs and USD-quoted spot pairs are supported in paper mode.")
+    pair = pair.strip().upper()
     side = str(side).upper()
     if side not in {"BUY", "SELL"}:
         raise PaperTradeError("Side must be BUY or SELL.")
@@ -108,6 +121,8 @@ def simulate_order(
     fill_price = price * (D("1") + slip if side == "BUY" else D("1") - slip)
     fill_price = _quantize(fill_price, D("0.00000001"))
     gross = _quantize(qty * fill_price, MONEY_STEP)
+    if gross <= 0:
+        raise PaperTradeError("Order notional value is too small to simulate.")
     fee = _quantize(gross * fee_rate, MONEY_STEP)
     total = gross + fee
     updated = deepcopy(account)

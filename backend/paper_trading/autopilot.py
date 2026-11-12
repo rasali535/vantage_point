@@ -24,6 +24,7 @@ from paper_trading.engine import (
     account_equity,
     evaluate_protective_triggers,
     initial_account,
+    is_supported_paper_pair,
     simulate_order,
 )
 from risk.engine import DeterministicRiskEngine, RiskPolicy
@@ -37,6 +38,12 @@ _market = KrakenAgent()
 _orchestrator = TradingOrchestrator()
 _technical_precheck = TechnicalAnalystAgent()
 
+DEFAULT_AUTOTRADE_PAIRS = (
+    "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,USD/CHF,"
+    "EUR/GBP,EUR/JPY,EUR/CHF,AUD/JPY,"
+    "BTC/USD,ETH/USD,SOL/USD,XRP/USD"
+)
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -47,14 +54,13 @@ def _enabled_by_operator() -> bool:
 
 
 def configured_pairs() -> list[str]:
-    default_pairs = "BTC/USD,ETH/USD,SOL/USD,XRP/USD,ADA/USD,DOGE/USD,LTC/USD,LINK/USD,DOT/USD,BCH/USD"
-    raw = os.getenv("PAPER_AUTOTRADE_PAIRS", default_pairs)
+    raw = os.getenv("PAPER_AUTOTRADE_PAIRS", DEFAULT_AUTOTRADE_PAIRS)
     pairs = list(dict.fromkeys(item.strip().upper() for item in raw.split(",") if item.strip()))
     if (
-        not pairs or len(pairs) > 20
-        or any("/" not in pair or pair.split("/")[-1] != "USD" for pair in pairs)
+        not pairs or len(pairs) > 25
+        or any(not is_supported_paper_pair(pair) for pair in pairs)
     ):
-        raise PaperTradeError("The current Kraken spot autopilot accepts 1–20 USD-quoted crypto pairs only.")
+        raise PaperTradeError("The paper autopilot accepts 1–25 Forex or USD-quoted spot pairs only.")
     return pairs
 
 
@@ -103,9 +109,11 @@ async def _save_account(db, before: dict, after: dict) -> dict:
 
 
 async def _record_event(db, event: dict) -> None:
+    record_id = event.get("idempotency_key") or uuid.uuid4().hex
+    timestamp = event.get("timestamp", _utcnow().isoformat())
     record = {
-        "_id": event.get("idempotency_key") or uuid.uuid4().hex,
-        "timestamp": event.get("timestamp", _utcnow().isoformat()),
+        "_id": record_id,
+        "timestamp": timestamp,
         "execution_mode": "paper",
         "exchange_order_submitted": False,
         **event,
@@ -114,6 +122,45 @@ async def _record_event(db, event: dict) -> None:
         await db.paper_autopilot_events.insert_one(record)
     except DuplicateKeyError:
         return
+
+    ledger_col = getattr(db, "trading_ledger", None)
+    if ledger_col is not None and event.get("pair") and event.get("side"):
+        try:
+            await ledger_col.insert_one({
+                "_id": f"paper_ledger:{record_id}",
+                "id": record_id,
+                "order_id": record_id,
+                "symbol": event["pair"],
+                "pair": event["pair"],
+                "side": str(event["side"]).lower(),
+                "volume": event.get("quantity"),
+                "price": event.get("fill_price"),
+                "status": "paper_filled",
+                "execution_mode": "paper",
+                "exchange_confirmed": False,
+                "exchange_order_submitted": False,
+                "realized_pnl_usd": event.get("realized_pnl_usd"),
+                "timestamp": timestamp,
+                "time": timestamp,
+            })
+        except Exception:
+            pass
+
+    audit_col = getattr(db, "audit_logs", None)
+    if audit_col is not None and event.get("pair") and event.get("side"):
+        try:
+            await audit_col.insert_one({
+                "_id": f"paper_audit:{record_id}",
+                "timestamp": timestamp,
+                "agent": "autonomous_paper_supervisor",
+                "action": f"Simulated {event['side']} {event['pair']} ({event.get('quantity')} @ {event.get('fill_price')})",
+                "reasoning": event.get("strategy_rationale") or f"Protective/autonomous paper execution ({event.get('event_type', 'paper_fill')}).",
+                "status": "paper_fill_recorded",
+                "execution_enabled": False,
+                "exchange_order_submitted": False,
+            })
+        except Exception:
+            pass
 
 
 async def _acquire_worker_lease(db) -> bool:
@@ -214,31 +261,68 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     if technical_precheck.signal == TradeAction.SELL and not current:
         return {"pair": pair, "decision": "HOLD", "reason": "No open long position exists to close."}
 
-    # Spend model calls only when deterministic indicators show a compatible
-    # candidate entry or exit; AI remains advisory and the risk gate stays final.
-    cycle = await _orchestrator.run(
-        pair=pair,
-        ticker=ticker,
-        candles=candles,
-        portfolio=portfolio,
-        closed_trades=account.get("orders", []),
-    )
-    action = cycle.strategy.action
-    confidence_floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.70"))
+    confidence_floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.55"))
     if not D("0.5") <= confidence_floor <= D("1"):
         return {"pair": pair, "decision": "HOLD", "reason": "Autonomous confidence threshold is outside the safe 0.5–1.0 range."}
-    confidence = D(str(cycle.strategy.confidence))
-    technical_signal = cycle.technical_analysis.signal
+
+    # Spend model calls when deterministic indicators show a compatible
+    # candidate entry or exit; if the LLM stage times out or hesitates on a
+    # confirmed deterministic signal, fall back to deterministic technical
+    # parameters while keeping the DeterministicRiskEngine authoritative.
+    cycle = None
+    if os.getenv("PAPER_AUTOTRADING_USE_LLM", "true").lower() == "true":
+        try:
+            cycle = await asyncio.wait_for(
+                _orchestrator.run(
+                    pair=pair,
+                    ticker=ticker,
+                    candles=candles,
+                    portfolio=portfolio,
+                    closed_trades=account.get("orders", []),
+                ),
+                timeout=float(os.getenv("PAPER_AUTOTRADING_PAIR_TIMEOUT_SECONDS", "22")),
+            )
+        except Exception as exc:
+            logger.warning("paper_autopilot_llm_fallback pair=%s error_type=%s", pair, type(exc).__name__)
+            cycle = None
+
+    if cycle is not None:
+        action = cycle.strategy.action
+        confidence = D(str(cycle.strategy.confidence))
+        technical_signal = cycle.technical_analysis.signal
+        atr_val = cycle.technical_analysis.atr
+        rationale = cycle.strategy.rationale
+        if action == TradeAction.HOLD and technical_signal in {TradeAction.BUY, TradeAction.SELL}:
+            action = technical_signal
+            confidence = max(confidence, D("0.72"))
+            rationale = (
+                f"[DETERMINISTIC TECHNICAL EXECUTION] {rationale} "
+                f"Confirmed {technical_signal.value} on {cycle.technical_analysis.trend} ({', '.join(cycle.technical_analysis.evidence)})."
+            )
+    else:
+        action = technical_precheck.signal
+        confidence = D("0.72")
+        technical_signal = technical_precheck.signal
+        atr_val = technical_precheck.atr
+        rationale = (
+            f"Deterministic {technical_precheck.trend} signal ({', '.join(technical_precheck.evidence)}) "
+            f"verified against risk policy."
+        )
+
     signal_report = whipsaw_protection.evaluate_signal_quality(candles, account.get("orders", []), action.value)
     analysis = {
-        "strategy": cycle.strategy.model_dump(mode="json"),
-        "technical_analysis": cycle.technical_analysis.model_dump(mode="json"),
-        "risk_assessment": cycle.risk_assessment.model_dump(mode="json"),
-        "execution_assessment": cycle.execution_assessment.model_dump(mode="json"),
-        "performance": cycle.performance_context,
+        "strategy": cycle.strategy.model_dump(mode="json") if cycle else {
+            "action": action.value,
+            "confidence": float(confidence),
+            "rationale": rationale,
+        },
+        "technical_analysis": (cycle.technical_analysis if cycle else technical_precheck).model_dump(mode="json"),
+        "risk_assessment": cycle.risk_assessment.model_dump(mode="json") if cycle else {"summary": "Deterministic risk gate active"},
+        "execution_assessment": cycle.execution_assessment.model_dump(mode="json") if cycle else {"status": "paper_simulation"},
+        "performance": cycle.performance_context if cycle else {},
         "signal_quality": signal_report,
     }
-    if signal_report.get("action_recommendation") in {"FORCE_HOLD", "ADVISE_HOLD"}:
+    if signal_report.get("action_recommendation") == "FORCE_HOLD":
         action = TradeAction.HOLD
 
     if confidence < confidence_floor or action == TradeAction.HOLD:
@@ -247,7 +331,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
     if action == TradeAction.BUY:
         if technical_signal != TradeAction.BUY or current:
             return {"pair": pair, "decision": "HOLD", "reason": "Technical confirmation missing or position already open."}
-        if not cycle.technical_analysis.atr or cycle.technical_analysis.atr <= 0:
+        if not atr_val or atr_val <= 0:
             return {"pair": pair, "decision": "HOLD", "reason": "ATR unavailable; safe stop distance cannot be calculated."}
 
         price = D(str(ticker["last"]))
@@ -255,22 +339,29 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
         fee_rate, slippage_bps = simulation_settings()
         slippage = slippage_bps / D("10000")
         entry_estimate = price * (D("1") + slippage)
-        stop_distance = max(D(str(cycle.technical_analysis.atr)) * D("1.5"), entry_estimate * D("0.001"))
+        stop_distance = max(D(str(atr_val)) * D("1.5"), entry_estimate * D("0.001"))
         stop = entry_estimate - stop_distance
         target = entry_estimate + stop_distance * D("2")
         policy = RiskPolicy.from_env()
         if policy is None:
             return {"pair": pair, "decision": "REJECTED", "reason": "Risk policy is missing or invalid."}
+        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "15"))
+        allocatable_cash = min(
+            D(str(account["cash"])) * D("0.995"),
+            portfolio.equity * max_position_pct / D("100"),
+        )
+        if allocatable_cash < D("10"):
+            return {"pair": pair, "decision": "HOLD", "reason": "Available cash or position allocation budget is below $10 minimum."}
         quantity = calculate_spot_quantity(
             portfolio.equity,
-            D(str(account["cash"])),
+            allocatable_cash,
             entry_estimate,
             stop,
-            policy.max_trade_risk_pct,
+            policy.max_trade_risk_pct * D("0.995"),
             fee_rate,
         )
-        if quantity <= 0:
-            return {"pair": pair, "decision": "HOLD", "reason": "Risk-sized quantity is below supported precision."}
+        if quantity <= 0 or (quantity * entry_estimate) < D("5"):
+            return {"pair": pair, "decision": "HOLD", "reason": "Risk-sized quantity is below supported precision or minimum notional."}
 
         updated, fill = simulate_order(
             account,
@@ -289,7 +380,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             **fill,
             "event_type": "autonomous_entry",
             "strategy_confidence": str(confidence),
-            "strategy_rationale": cycle.strategy.rationale[:1000],
+            "strategy_rationale": rationale[:1000],
             "stop_loss": str(stop),
             "take_profit": str(target),
         })
@@ -313,7 +404,7 @@ async def _execute_signal(db, account: dict, pair: str, ticker: dict, candles: l
             **fill,
             "event_type": "autonomous_signal_exit",
             "strategy_confidence": str(confidence),
-            "strategy_rationale": cycle.strategy.rationale[:1000],
+            "strategy_rationale": rationale[:1000],
         })
         return {"pair": pair, "decision": "SELL", "fill": fill, "account_version": saved.get("version"), "analysis": analysis}
 
@@ -329,7 +420,8 @@ async def run_autopilot_cycle(db=None) -> dict:
     if not _enabled_by_operator():
         return {"status": "disabled", "reason": "PAPER_AUTOTRADING_ALLOWED is false."}
 
-    db = db or await get_database()
+    if db is None:
+        db = await get_database()
     state = await db.paper_runtime.find_one({"_id": "autopilot"})
     if not state or state.get("enabled") is not True:
         return {"status": "stopped"}
@@ -389,10 +481,21 @@ async def run_autopilot_cycle(db=None) -> dict:
     return summary
 
 
+async def run_autopilot_once(db=None) -> dict:
+    """Operator-triggered immediate autopilot cycle."""
+    if db is None:
+        db = await get_database()
+    await _acquire_worker_lease(db)
+    try:
+        return await run_autopilot_cycle(db)
+    finally:
+        await _release_worker_lease(db)
+
+
 async def _worker_loop() -> None:
     monitor_interval = max(10, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "20"))))
     scan_interval = max(60, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "300"))))
-    last_scan = 0.0
+    last_scan: float | None = None
     while True:
         try:
             if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
@@ -405,7 +508,7 @@ async def _worker_loop() -> None:
                     try:
                         if state and state.get("enabled") is True and _enabled_by_operator():
                             now = asyncio.get_running_loop().time()
-                            if now - last_scan >= scan_interval:
+                            if last_scan is None or (now - last_scan >= scan_interval):
                                 await run_autopilot_cycle(db)
                                 last_scan = now
                             else:

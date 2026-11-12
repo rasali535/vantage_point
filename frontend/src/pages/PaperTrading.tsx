@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Activity, Bot, Clock, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, Bot, Clock, PauseCircle, PlayCircle, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import { FOREX_PAIRS, CRYPTO_PAIRS, ALL_TRADING_PAIRS } from '../App';
 
 type Position = {
   pair: string;
@@ -58,6 +59,18 @@ type LatestAnalysis = {
 const money = (value: string | number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 
+const priceFmt = (value: string | number) => {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return String(value);
+  if (num >= 500) {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  }
+  if (num >= 10) {
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(num);
+  }
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 5, maximumFractionDigits: 5 }).format(num);
+};
+
 const PaperTrading: React.FC = () => {
   const [token, setToken] = useState(() => {
     try {
@@ -72,9 +85,9 @@ const PaperTrading: React.FC = () => {
   const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRun[]>([]);
   const [latestAnalysis, setLatestAnalysis] = useState<LatestAnalysis | null>(null);
   const [utcNow, setUtcNow] = useState('');
-  const [pair, setPair] = useState('BTC/USD');
+  const [pair, setPair] = useState('EUR/USD');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
-  const [quantity, setQuantity] = useState('0.001');
+  const [quantity, setQuantity] = useState('10');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [busy, setBusy] = useState(false);
@@ -178,10 +191,32 @@ const PaperTrading: React.FC = () => {
       const latest = await request('autopilot');
       setAutopilot(latest);
       setMessage(latest.enabled
-        ? 'Autonomous paper trading started. It will analyse markets and manage virtual positions automatically.'
+        ? 'Autonomous paper trading started. It is now scanning Forex and Crypto pairs and managing virtual positions.'
         : 'New autonomous entries stopped. Protective exits remain monitored for open paper positions.');
+      await refresh(true);
     } catch (err: any) {
       setError(err.message || 'Unable to change autonomous trading state.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runCycleNow = async () => {
+    if (!token.trim()) return;
+    setBusy(true);
+    setError('');
+    setMessage('Running immediate autonomous Forex & Crypto scan cycle...');
+    try {
+      const result = await request('autopilot/run', { method: 'POST' });
+      const fillsCount = (result.results || []).filter((r: any) => r.decision === 'EXECUTED').length;
+      setMessage(
+        fillsCount > 0
+          ? `Bot cycle complete: ${fillsCount} simulated trade(s) executed across ${result.pairs_checked || 0} pairs.`
+          : `Bot cycle complete: ${result.pairs_checked || 0} pairs evaluated.`
+      );
+      await refresh(true);
+    } catch (err: any) {
+      setError(err.message || 'Immediate autopilot scan cycle failed.');
     } finally {
       setBusy(false);
     }
@@ -219,7 +254,7 @@ const PaperTrading: React.FC = () => {
           take_profit_price: side === 'BUY' && takeProfit ? takeProfit : null,
         }),
       });
-      setMessage(`${result.fill.side} simulated at ${money(result.fill.fill_price)}. No exchange order was submitted.`);
+      setMessage(`${result.fill.side} ${result.fill.quantity} ${result.fill.pair} simulated at ${priceFmt(result.fill.fill_price)}. No exchange order was submitted.`);
       await refresh();
     } catch (err: any) {
       setError(err.message || 'Paper order was rejected.');
@@ -250,7 +285,7 @@ const PaperTrading: React.FC = () => {
       <div className="pb-topbar">
         <div>
           <div className="pb-title"><Activity size={22} /> Paper Trading</div>
-          <div className="pb-sub">MUSE SPARK · KRAKEN SPOT · VIRTUAL USD · NO LIVE ORDERS</div>
+          <div className="pb-sub">MUSE SPARK · FOREX &amp; KRAKEN SPOT · VIRTUAL USD · NO LIVE ORDERS</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="pb-live"><i />SIMULATION</span>
@@ -314,7 +349,7 @@ const PaperTrading: React.FC = () => {
             <>
               <div className="pb-topfill-value">{money(topFill.gross_usd)}</div>
               <div className="pb-muted">{topFill.side} {topFill.quantity} {topFill.pair}</div>
-              <div className="pb-muted">@ {money(topFill.fill_price)} · fee {money(topFill.fee_usd)}</div>
+              <div className="pb-muted">@ {priceFmt(topFill.fill_price)} · fee {money(topFill.fee_usd)}</div>
               <div className="pb-muted">{topFill.timestamp ? new Date(topFill.timestamp).toLocaleString() : ''}</div>
             </>
           )}
@@ -350,9 +385,17 @@ const PaperTrading: React.FC = () => {
 
       <div className="pb-split" style={{ marginTop: 12 }}>
         <form className="pb-panel" onSubmit={submitOrder}>
-          <div className="pb-section-title" style={{ marginTop: 0 }}>Simulate spot order</div>
-          <label className="pb-label">Pair</label>
-          <input value={pair} onChange={e => setPair(e.target.value.toUpperCase())} required pattern="[A-Z0-9]+/USD" title="Use a USD-quoted pair such as BTC/USD" className="pb-input" style={{ marginBottom: 12 }} />
+          <div className="pb-section-title" style={{ marginTop: 0 }}>Simulate Forex / Spot order</div>
+          <label className="pb-label">Market Pair (Forex &amp; Crypto)</label>
+          <select value={pair} onChange={e => setPair(e.target.value)} className="pb-select" style={{ marginBottom: 12 }}>
+            <optgroup label="Forex Pairs">
+              {FOREX_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+            <optgroup label="Crypto Pairs">
+              {CRYPTO_PAIRS.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+            {!ALL_TRADING_PAIRS.includes(pair) && <option value={pair}>{pair}</option>}
+          </select>
           <label className="pb-label">Side</label>
           <select value={side} onChange={e => setSide(e.target.value as 'BUY' | 'SELL')} className="pb-select" style={{ marginBottom: 12 }}>
             <option value="BUY">BUY</option><option value="SELL">SELL</option>
@@ -360,10 +403,10 @@ const PaperTrading: React.FC = () => {
           <label className="pb-label">Quantity</label>
           <input value={quantity} onChange={e => setQuantity(e.target.value)} required inputMode="decimal" className="pb-input" style={{ marginBottom: 12 }} />
           {side === 'BUY' && <>
-            <label className="pb-label">Stop-loss price (required by risk policy)</label>
-            <input value={stopLoss} onChange={e => setStopLoss(e.target.value)} inputMode="decimal" placeholder="e.g. 64000" className="pb-input" style={{ marginBottom: 12 }} />
-            <label className="pb-label">Take-profit price (optional)</label>
-            <input value={takeProfit} onChange={e => setTakeProfit(e.target.value)} inputMode="decimal" placeholder="e.g. 70000" className="pb-input" style={{ marginBottom: 12 }} />
+            <label className="pb-label">Stop-loss price (optional — auto-set at -0.8% if blank)</label>
+            <input value={stopLoss} onChange={e => setStopLoss(e.target.value)} inputMode="decimal" placeholder="Leave blank for automatic -0.8% protective stop" className="pb-input" style={{ marginBottom: 12 }} />
+            <label className="pb-label">Take-profit price (optional — auto-set at +1.6% if blank)</label>
+            <input value={takeProfit} onChange={e => setTakeProfit(e.target.value)} inputMode="decimal" placeholder="Leave blank for automatic +1.6% target" className="pb-input" style={{ marginBottom: 12 }} />
           </>}
           <button className={`pb-btn ${side === 'BUY' ? 'pb-btn-buy' : 'pb-btn-sell'}`} type="submit" disabled={busy || !token.trim()} style={{ width: '100%', marginTop: 4 }}>
             {side === 'BUY' ? <TrendingUp size={16} /> : <TrendingDown size={16} />} Simulate {side}
@@ -382,14 +425,14 @@ const PaperTrading: React.FC = () => {
                 <tbody>{account.positions.map(position => (
                   <tr key={position.pair}>
                     <td>{position.pair}</td><td>{position.quantity}</td>
-                    <td>{money(position.average_entry)}</td><td>{money(position.mark_price)}</td>
-                    <td>{position.stop_loss ? money(position.stop_loss) : '—'} / {position.take_profit ? money(position.take_profit) : '—'}</td>
+                    <td>{priceFmt(position.average_entry)}</td><td>{priceFmt(position.mark_price)}</td>
+                    <td>{position.stop_loss ? priceFmt(position.stop_loss) : '—'} / {position.take_profit ? priceFmt(position.take_profit) : '—'}</td>
                   </tr>
                 ))}</tbody>
               </table>
             </div>
           )}
-          <div className="pb-muted" style={{ marginTop: 12 }}>Protective checks run when you press Check exits. This is not a continuously running background service.</div>
+          <div className="pb-muted" style={{ marginTop: 12 }}>Protective checks run continuously in the background worker and when you press Check exits.</div>
         </div>
       </div>
 
@@ -399,7 +442,7 @@ const PaperTrading: React.FC = () => {
           <table className="pb-table">
             <thead><tr><th>Time</th><th>Pair</th><th>Side</th><th>Qty</th><th>Fill price</th><th>Fee</th><th>Mode</th></tr></thead>
             <tbody>{orders.map((order: any) => (
-              <tr key={order.idempotency_key}><td>{new Date(order.timestamp).toLocaleString()}</td><td>{order.pair}</td><td className={order.side === 'BUY' ? 'pb-up' : 'pb-neg'} style={{ fontWeight: 700 }}>{order.side}</td><td>{order.quantity}</td><td>{money(order.fill_price)}</td><td>{money(order.fee_usd)}</td><td><span className="pb-mode">PAPER</span></td></tr>
+              <tr key={order.idempotency_key}><td>{new Date(order.timestamp).toLocaleString()}</td><td>{order.pair}</td><td className={order.side === 'BUY' ? 'pb-up' : 'pb-neg'} style={{ fontWeight: 700 }}>{order.side}</td><td>{order.quantity}</td><td>{priceFmt(order.fill_price)}</td><td>{money(order.fee_usd)}</td><td><span className="pb-mode">PAPER</span></td></tr>
             ))}</tbody>
           </table>
         )}
@@ -411,9 +454,14 @@ const PaperTrading: React.FC = () => {
           <span className={`pb-pill${autopilot?.enabled ? ' pb-pill-on' : ''}`}>
             {autopilot?.enabled ? 'Autopilot running' : 'Autopilot stopped'}
           </span>
-          <button className={autopilot?.enabled ? 'pb-btn pb-btn-ghost' : 'pb-btn'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
-            {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="pb-btn" onClick={runCycleNow} disabled={busy || !token.trim() || !autopilot?.paper_trading_enabled}>
+              <Zap size={16} /> Run Bot Cycle Now
+            </button>
+            <button className={autopilot?.enabled ? 'pb-btn pb-btn-ghost' : 'pb-btn'} onClick={toggleAutopilot} disabled={busy || !token.trim() || !autopilot?.worker_configured || !autopilot?.worker_running || !autopilot?.paper_trading_enabled}>
+              {autopilot?.enabled ? <><PauseCircle size={16} /> Stop new entries</> : <><PlayCircle size={16} /> Start autonomous trading</>}
+            </button>
+          </div>
         </div>
         <div className="pb-muted" style={{ marginTop: 10 }}>
           {autopilot ? `Markets: ${autopilot.pairs.join(', ')} · Analysis every ${Math.round(autopilot.scan_interval_seconds / 60)} min · Exit checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}

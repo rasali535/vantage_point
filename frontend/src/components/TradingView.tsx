@@ -12,8 +12,12 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
   const [status, setStatus] = useState<any>(null);
   const [scanning, setScanning] = useState(false);
   const [lastDecision, setLastDecision] = useState<any>(null);
-  const [pair, setPair] = useState('BTC/USD');
-  const majorPairs = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD', 'DOGE/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD', 'BCH/USD'];
+  const [pair, setPair] = useState('EUR/USD');
+  const majorPairs = [
+    'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF',
+    'EUR/GBP', 'EUR/JPY', 'EUR/CHF', 'EUR/AUD', 'EUR/CAD', 'AUD/JPY',
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD', 'DOGE/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD', 'BCH/USD'
+  ];
 
   useEffect(() => {
     fetchStatus();
