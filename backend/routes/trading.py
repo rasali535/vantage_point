@@ -6,6 +6,7 @@ from typing import Any, Dict, Literal
 import hmac
 import hashlib
 import socket
+import time
 
 import httpx
 
@@ -15,7 +16,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from agents.kraken import KrakenAgent
-from agents.meta_ai import meta_ai, MetaAIError
+from agents.meta_ai import meta_ai, MetaAIError, meta_http_transport
 from agents.orchestrator import trading_orchestrator
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.whipsaw_protection import whipsaw_protection
@@ -138,6 +139,35 @@ async def debug_meta_upstream():
     }
     report["auth_header_length"] = len(headers.get("Authorization", ""))
 
+    proxy_vars = []
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        if os.getenv(var) or os.getenv(var.lower()):
+            proxy_vars.append(var)
+    report["proxy_env_present"] = proxy_vars or "none"
+
+    tcp_results: Any = []
+    try:
+        for family, _, _, _, sockaddr in socket.getaddrinfo(
+            "api.meta.ai", 443, type=socket.SOCK_STREAM
+        ):
+            ip = sockaddr[0]
+            started = time.monotonic()
+            try:
+                sock = socket.create_connection((ip, 443), timeout=4)
+                elapsed_ms = round((time.monotonic() - started) * 1000)
+                sock.close()
+                tcp_results.append(
+                    {"ip": ip, "family": f"{family!s}", "connected": True, "elapsed_ms": elapsed_ms}
+                )
+                break
+            except Exception as exc:
+                tcp_results.append(
+                    {"ip": ip, "family": f"{family!s}", "connected": False, "error": type(exc).__name__}
+                )
+    except Exception as exc:
+        tcp_results = {"error": type(exc).__name__}
+    report["tcp_connect_probe"] = tcp_results
+
     chat_payload = {
         "model": "muse-spark-1.3",
         "messages": [{"role": "user", "content": "Reply with the word OK."}],
@@ -147,7 +177,7 @@ async def debug_meta_upstream():
 
     async def _probe(method: str, path: str, payload: Any = None) -> Dict[str, Any]:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0), transport=meta_http_transport()) as client:
                 if method == "GET":
                     response = await client.get(f"{meta_ai.base_url}{path}", headers=headers)
                 else:

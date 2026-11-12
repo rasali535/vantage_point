@@ -34,6 +34,17 @@ META_CHAT_MODEL_FALLBACKS = (
 _CHAT_MODEL_FAMILIES = ("muse-spark", "muse-wonder", "muse-ember")
 
 
+def meta_http_transport() -> httpx.AsyncHTTPTransport:
+    """Build the HTTP transport for Meta API calls, pinned to IPv4 egress.
+
+    Experiment: Render resolves both A and AAAA records for api.meta.ai, and
+    byte-identical requests succeed from IPv4-only networks while
+    Render-sourced calls receive empty catalogs and model_not_found. Until
+    Meta confirms the cause, route around a potentially degraded IPv6 edge.
+    """
+    return httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+
+
 def normalize_model_id(model: Optional[str]) -> str:
     """Normalize a configured model ID to the bare Meta Model API ID.
 
@@ -257,7 +268,7 @@ class MetaAIClient:
                 return self._catalog_cache
 
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=5.0)) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=5.0), transport=meta_http_transport()) as client:
                     response = await client.get(
                         f"{self.base_url}/models",
                         headers=self._headers(),
@@ -429,7 +440,7 @@ class MetaAIClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=8.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=8.0), transport=meta_http_transport()) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=self._headers(),

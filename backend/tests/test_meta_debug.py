@@ -48,8 +48,19 @@ class MetaDebugUpstreamTests(unittest.IsolatedAsyncioTestCase):
             (2, 1, 6, "", ("93.184.216.34", 443)),
             (10, 1, 6, "", ("2606:2800:220:1:248:1893:25c8:1946", 443, 0, 0)),
         ]
+
+        class FakeSocket:
+            def close(self):
+                pass
+
+        clear_proxies = {var: "" for var in (
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+        )}
         with patch("routes.trading.httpx.AsyncClient", FakeAsyncClient), \
-             patch("routes.trading.socket.getaddrinfo", return_value=fake_addrs):
+             patch("routes.trading.socket.getaddrinfo", return_value=fake_addrs), \
+             patch("routes.trading.socket.create_connection", return_value=FakeSocket()), \
+             patch.dict(os.environ, clear_proxies):
             report = await debug_meta_upstream()
         self.assertTrue(report["key_configured"])
         expected_fp = hashlib.sha256(self.test_key.encode("utf-8")).hexdigest()[:16]
@@ -57,11 +68,31 @@ class MetaDebugUpstreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["base_url"], "https://api.meta.ai/v1")
         self.assertEqual(len(report["dns_api_meta_ai"]), 2)
         self.assertEqual(report["request_headers"]["Authorization"], "<redacted-present>")
+        self.assertEqual(report["proxy_env_present"], "none")
+        self.assertEqual(len(report["tcp_connect_probe"]), 1)
+        self.assertTrue(report["tcp_connect_probe"][0]["connected"])
         self.assertEqual(report["get_models"]["http_status"], 200)
         self.assertIn("muse-spark-1.3", report["get_models"]["body_prefix"])
         self.assertEqual(report["post_chat_completions"]["http_status"], 200)
         self.assertEqual(report["chat_payload_sent"]["model"], "muse-spark-1.3")
         self.assertNotIn(self.test_key, str(report))
+
+    async def test_debug_reports_proxy_names_without_values(self):
+        fake_addrs = [(2, 1, 6, "", ("93.184.216.34", 443))]
+
+        class FakeSocket:
+            def close(self):
+                pass
+
+        proxy_value = "http://user:secretpass@proxy.internal:8080"
+        with patch("routes.trading.httpx.AsyncClient", FakeAsyncClient), \
+             patch("routes.trading.socket.getaddrinfo", return_value=fake_addrs), \
+             patch("routes.trading.socket.create_connection", return_value=FakeSocket()), \
+             patch.dict(os.environ, {"HTTPS_PROXY": proxy_value}):
+            report = await debug_meta_upstream()
+        self.assertEqual(report["proxy_env_present"], ["HTTPS_PROXY"])
+        self.assertNotIn(proxy_value, str(report))
+        self.assertNotIn("secretpass", str(report))
 
     async def test_debug_without_key_reports_not_configured(self):
         with patch.dict(os.environ, {"MODEL_API_KEY": ""}):
