@@ -63,7 +63,7 @@ const ChatBot = () => {
           background: 'var(--primary)',
           color: 'white',
           border: 'none',
-          boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4)',
+          boxShadow: '0 8px 32px rgba(36, 86, 230, 0.35)',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -93,12 +93,12 @@ const ChatBot = () => {
       overflow: 'hidden',
       transition: 'all 0.3s ease',
       border: '1px solid var(--glass-border)',
-      boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+      boxShadow: '0 20px 40px rgba(16,24,40,0.18)'
     }}>
       {/* Header */}
       <div style={{ 
         padding: '1rem', 
-        background: 'rgba(255,255,255,0.05)', 
+        background: '#f4f6f9', 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
@@ -152,7 +152,8 @@ const ChatBot = () => {
                 <div style={{ 
                   padding: '0.75rem 1rem', 
                   borderRadius: '16px',
-                  background: msg.role === 'user' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                  background: msg.role === 'user' ? 'var(--primary)' : '#f2f4f7',
+                  color: msg.role === 'user' ? '#fff' : 'var(--text)',
                   fontSize: '0.9rem',
                   lineHeight: 1.5,
                   border: msg.role === 'user' ? 'none' : '1px solid var(--glass-border)'
@@ -166,7 +167,7 @@ const ChatBot = () => {
                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--surface-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Bot size={16} />
                 </div>
-                <div style={{ padding: '0.75rem 1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.05)' }}>
+                <div style={{ padding: '0.75rem 1rem', borderRadius: '16px', background: '#f2f4f7' }}>
                   <Loader2 size={16} className="animate-spin" />
                 </div>
               </div>
@@ -186,10 +187,10 @@ const ChatBot = () => {
                 style={{
                   width: '100%',
                   padding: '0.75rem 3rem 0.75rem 1rem',
-                  background: 'rgba(255,255,255,0.05)',
+                  background: '#f4f6f9',
                   border: '1px solid var(--glass-border)',
                   borderRadius: '12px',
-                  color: 'white',
+                  color: 'var(--text)',
                   outline: 'none'
                 }}
               />
@@ -232,8 +233,8 @@ const ChatBot = () => {
           transition: all 0.2s;
         }
         .btn-icon:hover {
-          background: rgba(255,255,255,0.1);
-          color: white;
+          background: rgba(16,24,40,0.06);
+          color: var(--text);
         }
         .animate-spin {
           animation: spin 1s linear infinite;

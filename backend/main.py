@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
-import routes.meetings
 import routes.trading
 import routes.chat
 from database import close_database, ping_database
@@ -86,7 +85,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Paper-Token"],
 )
 
-app.include_router(routes.meetings.router, prefix="/api/meetings", tags=["Meetings"])
 app.include_router(routes.trading.router, prefix="/api/trading", tags=["Trading"])
 app.include_router(routes.chat.router, prefix="/api/chat", tags=["Chat"])
 
