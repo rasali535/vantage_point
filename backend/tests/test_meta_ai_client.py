@@ -501,6 +501,33 @@ class MetaAIModelFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("muse-spark-1.2", status["models_sample"])
             self.assertNotIn(self.test_key, str(status))
 
+    async def test_readiness_includes_catalog_diagnostic_on_success(self):
+        client = MetaAIClient()
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = self._models_response(client, ["muse-spark-1.2"])
+            status = await client.check_readiness()
+            diagnostic = status["catalog_diagnostic"]
+            self.assertEqual(diagnostic["http_status"], 200)
+            self.assertEqual(diagnostic["model_count"], 1)
+            self.assertIn("data", diagnostic["structure"])
+            self.assertNotIn(self.test_key, str(status))
+
+    async def test_readiness_includes_catalog_diagnostic_on_error_status(self):
+        client = MetaAIClient()
+        error_resp = httpx.Response(
+            status_code=403,
+            json={"error": {"code": "forbidden", "type": "auth_error", "message": "No access."}},
+            request=httpx.Request("GET", f"{client.base_url}/models"),
+        )
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = error_resp
+            status = await client.check_readiness()
+            self.assertEqual(status["status"], "catalog_empty")
+            diagnostic = status["catalog_diagnostic"]
+            self.assertEqual(diagnostic["http_status"], 403)
+            self.assertEqual(diagnostic["code"], "forbidden")
+            self.assertNotIn(self.test_key, str(status))
+
 
 if __name__ == "__main__":
     unittest.main()

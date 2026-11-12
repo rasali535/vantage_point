@@ -180,6 +180,9 @@ class MetaAIClient:
         self._lock = asyncio.Lock()
         self._catalog_cache: Optional[List[str]] = None
         self._catalog_checked = False
+        # Last /models attempt detail (status codes and shapes only, never secrets)
+        # so the readiness endpoint can explain an empty catalog without log access.
+        self._last_catalog_diagnostic: Optional[Dict[str, Any]] = None
 
         # One-way fingerprint lets operators compare keys without ever logging secrets
         key_fingerprint = (
@@ -272,6 +275,11 @@ class MetaAIClient:
                         if isinstance(body, dict)
                         else type(body).__name__
                     )
+                    self._last_catalog_diagnostic = {
+                        "http_status": response.status_code,
+                        "structure": keys_summary,
+                        "model_count": len(model_ids),
+                    }
                     logger.info(
                         "meta_model_catalog_discovered status=%s model_count=%d "
                         "structure_keys=%s sample=%s",
@@ -285,6 +293,12 @@ class MetaAIClient:
                     self._catalog_checked = True
                     self._catalog_cache = []
                     err_info = self._extract_error(response)
+                    self._last_catalog_diagnostic = {
+                        "http_status": response.status_code,
+                        "code": err_info.get("code"),
+                        "type": err_info.get("type"),
+                        "message": err_info.get("message"),
+                    }
                     logger.warning(
                         "meta_model_catalog_unavailable status=%s code=%s type=%s message=%s",
                         response.status_code,
@@ -301,11 +315,19 @@ class MetaAIClient:
                     return []
             except httpx.TimeoutException as exc:
                 logger.warning("meta_model_catalog_timeout error=%s", type(exc).__name__)
+                self._last_catalog_diagnostic = {
+                    "error": "timeout",
+                    "detail": type(exc).__name__,
+                }
                 return self._catalog_cache or []
             except MetaAIError:
                 raise
             except Exception as exc:
                 logger.warning("meta_model_catalog_failed error=%s", type(exc).__name__)
+                self._last_catalog_diagnostic = {
+                    "error": "discovery_failed",
+                    "detail": type(exc).__name__,
+                }
                 return self._catalog_cache or []
 
     def _model_not_found_message(self, requested: str, catalog: List[str]) -> str:
@@ -539,6 +561,7 @@ class MetaAIClient:
                 "model_count": len(discovered),
                 "default_model_available": target_found,
                 "models_sample": discovered[:8],
+                "catalog_diagnostic": self._last_catalog_diagnostic or {},
             }
         except MetaAIAuthenticationError:
             return {
@@ -548,6 +571,7 @@ class MetaAIClient:
                 "base_url": self.base_url,
                 "default_model": DEFAULT_META_MODEL,
                 "detail": "Invalid credentials or unauthorized.",
+                "catalog_diagnostic": self._last_catalog_diagnostic or {},
             }
         except Exception as exc:
             return {
