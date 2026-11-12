@@ -4,6 +4,10 @@ import uuid
 import os
 from typing import Any, Dict, Literal
 import hmac
+import hashlib
+import socket
+
+import httpx
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -93,6 +97,74 @@ async def get_trading_status():
 async def get_meta_readiness():
     # No secrets are exposed; the key appears only as a fingerprint.
     return await meta_ai.check_readiness()
+
+
+@router.get("/meta/debug/upstream")
+async def debug_meta_upstream():
+    """Probe the Meta API from inside this process and report raw results.
+
+    Debugging aid for path-dependent upstream failures. Reports statuses,
+    response prefixes, DNS resolution, and header shape only. The API key
+    itself is never included; it appears solely as a fingerprint.
+    """
+    meta_ai._refresh_credentials()
+    fingerprint = (
+        hashlib.sha256(meta_ai.api_key.encode("utf-8")).hexdigest()[:16]
+        if meta_ai.api_key
+        else "missing"
+    )
+    report: Dict[str, Any] = {
+        "key_configured": bool(meta_ai.api_key),
+        "key_fingerprint": fingerprint,
+        "base_url": meta_ai.base_url,
+    }
+    try:
+        addr_infos = socket.getaddrinfo("api.meta.ai", 443, type=socket.SOCK_STREAM)
+        seen = set()
+        dns: list = []
+        for family, _, _, _, sockaddr in addr_infos:
+            entry = f"{family!s}:{sockaddr[0]}"
+            if entry not in seen:
+                seen.add(entry)
+                dns.append(entry)
+        report["dns_api_meta_ai"] = dns
+    except Exception as exc:
+        report["dns_api_meta_ai"] = {"error": type(exc).__name__}
+
+    headers = meta_ai._headers()
+    report["request_headers"] = {
+        name: ("<redacted-present>" if name.lower() == "authorization" else value)
+        for name, value in headers.items()
+    }
+    report["auth_header_length"] = len(headers.get("Authorization", ""))
+
+    chat_payload = {
+        "model": "muse-spark-1.3",
+        "messages": [{"role": "user", "content": "Reply with the word OK."}],
+        "max_completion_tokens": 5,
+    }
+    report["chat_payload_sent"] = chat_payload
+
+    async def _probe(method: str, path: str, payload: Any = None) -> Dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+                if method == "GET":
+                    response = await client.get(f"{meta_ai.base_url}{path}", headers=headers)
+                else:
+                    response = await client.post(
+                        f"{meta_ai.base_url}{path}", headers=headers, json=payload
+                    )
+            return {
+                "http_status": response.status_code,
+                "content_type": response.headers.get("content-type"),
+                "body_prefix": response.text[:600],
+            }
+        except Exception as exc:
+            return {"error": type(exc).__name__, "detail": str(exc)[:200]}
+
+    report["get_models"] = await _probe("GET", "/models")
+    report["post_chat_completions"] = await _probe("POST", "/chat/completions", chat_payload)
+    return report
 
 
 @router.get("/ledger")
