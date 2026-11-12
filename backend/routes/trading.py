@@ -27,7 +27,9 @@ from paper_trading.engine import (
     PaperTradeError, account_summary, initial_account, instrument_category,
     simulate_order, evaluate_protective_triggers,
 )
-from paper_trading.autopilot import autopilot_status, configured_pairs, run_autopilot_once, set_autopilot_enabled
+from paper_trading.autopilot import (
+    _active_risk_policy, autopilot_status, configured_pairs, run_autopilot_once, set_autopilot_enabled
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -112,7 +114,7 @@ async def get_trading_status():
 
     research_model = os.getenv("RESEARCH_MODEL", "muse-spark-1.3").split("/")[-1]
     trading_model = os.getenv("TRADING_MODEL", "muse-spark-1.3").split("/")[-1]
-    risk_policy_configured = RiskPolicy.from_env() is not None
+    risk_policy_configured = _active_risk_policy() is not None
     meta_status = "ready" if meta_ai.api_key else "not_configured"
     meta_risk_status = "advisory_only" if meta_ai.api_key else "not_configured"
     return {

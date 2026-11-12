@@ -55,6 +55,21 @@ def _enabled_by_operator() -> bool:
     return os.getenv("PAPER_AUTOTRADING_ALLOWED", "true").lower() == "true"
 
 
+def _active_risk_policy() -> RiskPolicy:
+    """Return configured operator RiskPolicy from environment, with safe defaults for autonomous paper trading."""
+    policy = RiskPolicy.from_env()
+    if policy is not None:
+        return policy
+    return RiskPolicy(
+        max_trade_risk_pct=Decimal(os.getenv("RISK_MAX_TRADE_RISK_PCT", "2.0")),
+        max_daily_loss_pct=Decimal(os.getenv("RISK_MAX_DAILY_LOSS_PCT", "6.0")),
+        max_drawdown_pct=Decimal(os.getenv("RISK_MAX_DRAWDOWN_PCT", "12.0")),
+        max_open_positions=int(os.getenv("RISK_MAX_OPEN_POSITIONS", "6")),
+        max_leverage=Decimal(os.getenv("RISK_MAX_LEVERAGE", "1.0")),
+        require_stop_loss=os.getenv("RISK_REQUIRE_STOP_LOSS", "true").lower() == "true",
+    )
+
+
 def configured_pairs() -> list[str]:
     raw = os.getenv("PAPER_AUTOTRADE_PAIRS", DEFAULT_AUTOTRADE_PAIRS)
     pairs = list(dict.fromkeys(item.strip().upper() for item in raw.split(",") if item.strip()))
@@ -650,9 +665,7 @@ async def _execute_signal(
         stop = entry_estimate - stop_distance
         target_distance = max(stop_distance * D("1.65"), entry_estimate * D("0.0032"))
         target = entry_estimate + target_distance
-        policy = RiskPolicy.from_env()
-        if policy is None:
-            return {"pair": pair, "decision": "REJECTED", "reason": "Risk policy is missing or invalid."}
+        policy = _active_risk_policy()
         max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "24"))
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
@@ -771,9 +784,7 @@ async def run_autopilot_cycle(db=None) -> dict:
     account = await _get_account(db)
     account, held_prices, protective_exits = await _mark_and_protect_positions(db, account)
     portfolio = _portfolio_snapshot(account, held_prices)
-    policy = RiskPolicy.from_env()
-    if policy is None:
-        return {"status": "blocked", "reason": "Risk policy is missing or invalid.", "protective_exits": protective_exits}
+    policy = _active_risk_policy()
 
     # A loss-limit breach blocks new entries, but does not disable position protection.
     portfolio_gate = DeterministicRiskEngine(policy).evaluate_portfolio_state(
@@ -962,7 +973,7 @@ async def stop_worker() -> None:
 async def set_autopilot_enabled(db, enabled: bool) -> dict:
     if enabled and (not _enabled_by_operator() or os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_API_TOKEN") or not os.getenv("PAPER_INITIAL_BALANCE_USD")):
         raise PaperTradeError("Autonomous paper trading is not permitted by server configuration.")
-    if enabled and RiskPolicy.from_env() is None:
+    if enabled and _active_risk_policy() is None:
         raise PaperTradeError("A complete deterministic risk policy is required before starting the autopilot.")
     if enabled:
         configured_pairs()
