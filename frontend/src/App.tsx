@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCcw } from 'lucide-react';
+import { RefreshCcw, LayoutDashboard, Bot, Activity, Users, Shield, Smartphone, Tablet, Monitor } from 'lucide-react';
 
 import AuditLog from './pages/AuditLog';
 import TradingView from './components/TradingView';
@@ -156,6 +156,7 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'terminal' | 'paper' | 'trading' | 'boardroom' | 'audit'>('terminal');
+  const [viewportMode, setViewportMode] = useState<'auto' | 'tablet' | 'mobile'>('auto');
   const [status, setStatus] = useState<any>(null);
   const [deliberations, setDeliberations] = useState<any[]>([]);
   const [boardroomLoading, setBoardroomLoading] = useState(true);
@@ -265,9 +266,11 @@ const App: React.FC = () => {
   };
 
   const totalRounds = deliberations.length + (Array.isArray(status?.history) ? status.history.length : 0);
+  const paperEquity = status?.paper_portfolio?.equity ? Number(status.paper_portfolio.equity) : null;
+  const paperPnl = status?.paper_portfolio?.total_pnl ? Number(status.paper_portfolio.total_pnl) : 0;
 
   return (
-    <div className="mf-shell">
+    <div className={`mf-shell ${viewportMode === 'mobile' ? 'mf-force-mobile' : viewportMode === 'tablet' ? 'mf-force-tablet' : ''}`}>
       <ChatBot />
 
       <div className="mf-container">
@@ -286,7 +289,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <div className="mf-brand-eyebrow">
-                VANTAGE POINT SIMULATION · FOREX, METALS, INDICES &amp; CRYPTO
+                VANTAGE POINT · 1M/5M SCALPER · FX, METALS, INDICES &amp; CRYPTO
               </div>
               <div className="mf-brand-title">
                 MUSE SPARK 1.3 <span className="mf-brand-sep">·</span>{' '}
@@ -315,8 +318,35 @@ const App: React.FC = () => {
             ))}
           </nav>
 
-          {/* Right Status & Pair Controls */}
+          {/* Right Status, Device View Switcher & Pair Controls */}
           <div className="mf-topbar-right">
+            <div className="mf-device-switcher" role="group" aria-label="Device layout mode">
+              <button
+                type="button"
+                className={`mf-device-btn ${viewportMode === 'auto' ? 'active' : ''}`}
+                onClick={() => setViewportMode('auto')}
+                title="Auto responsive layout (Desktop / Tablet / Mobile)"
+              >
+                <Monitor size={12} /> <span>AUTO</span>
+              </button>
+              <button
+                type="button"
+                className={`mf-device-btn ${viewportMode === 'tablet' ? 'active' : ''}`}
+                onClick={() => setViewportMode('tablet')}
+                title="Tablet layout (820px)"
+              >
+                <Tablet size={12} /> <span>TABLET</span>
+              </button>
+              <button
+                type="button"
+                className={`mf-device-btn ${viewportMode === 'mobile' ? 'active' : ''}`}
+                onClick={() => setViewportMode('mobile')}
+                title="Mobile layout (412px)"
+              >
+                <Smartphone size={12} /> <span>MOBILE</span>
+              </button>
+            </div>
+
             <div className="mf-pair-control" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <select
                 value={ALL_TRADING_PAIRS.includes(pair) ? pair : 'CUSTOM'}
@@ -327,13 +357,13 @@ const App: React.FC = () => {
                 style={{ width: '132px', cursor: 'pointer' }}
                 aria-label="Select Forex, Metals, Indices, or Crypto pair"
               >
-                <optgroup label="Forex Pairs">
-                  {FOREX_PAIRS.map((p) => (
+                <optgroup label="Metals (Gold / Silver / Platinum / Copper)">
+                  {METAL_PAIRS.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </optgroup>
-                <optgroup label="Metals (Gold / Silver / Platinum / Copper)">
-                  {METAL_PAIRS.map((p) => (
+                <optgroup label="Forex Pairs">
+                  {FOREX_PAIRS.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </optgroup>
@@ -350,11 +380,28 @@ const App: React.FC = () => {
               </select>
             </div>
 
-            <span className="mf-status-live">
-              <i /> LIVE · FX · METALS · INDICES
+            {paperEquity !== null && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('paper')}
+                className="mf-status-round"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: paperPnl >= 0 ? '#a7f3d0' : '#fed7aa',
+                  background: paperPnl >= 0 ? '#ecfdf5' : '#fff7ed',
+                  color: paperPnl >= 0 ? '#065f46' : '#9a3412',
+                }}
+                title="Open Paper Bot Portfolio"
+              >
+                BOT ${paperEquity.toFixed(2)} ({paperPnl >= 0 ? '+' : ''}${paperPnl.toFixed(2)})
+              </button>
+            )}
+
+            <span className="mf-status-live mf-hide-xs">
+              <i /> LIVE · 1M/5M SCALP
             </span>
-            <span className="mf-status-round">ROUND #{totalRounds || 1}</span>
-            <span className="mf-status-clock">{utcClock}</span>
+            <span className="mf-status-round mf-hide-sm">ROUND #{totalRounds || 1}</span>
+            <span className="mf-status-clock mf-hide-xs">{utcClock}</span>
           </div>
         </header>
 
@@ -413,6 +460,33 @@ const App: React.FC = () => {
           </div>
         </footer>
       </div>
+
+      {/* ===================================================================
+          MOBILE & TABLET BOTTOM APP NAVIGATION BAR
+          =================================================================== */}
+      <nav className="mf-mobile-bottom-nav" aria-label="Mobile workspace navigation">
+        {[
+          { id: 'terminal', label: 'Terminal', icon: LayoutDashboard },
+          { id: 'paper', label: 'Paper Bot', icon: Bot },
+          { id: 'trading', label: 'Scanner', icon: Activity },
+          { id: 'boardroom', label: 'Boardroom', icon: Users },
+          { id: 'audit', label: 'Audit', icon: Shield },
+        ].map((item) => {
+          const IconComp = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`mf-mobile-nav-item ${isActive ? 'active' : ''}`}
+              onClick={() => setActiveTab(item.id as any)}
+            >
+              <IconComp size={18} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 };

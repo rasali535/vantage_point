@@ -110,17 +110,17 @@ const TradingView = ({ autoStartScan, onScanStarted }: TradingViewProps) => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div className="tv-main-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <BoardroomCouncil decision={lastDecision} scanning={scanning} />
           
           {/* Recent Trades */}
           <div className="glass card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <ShoppingCart size={20} color="var(--warning)" /> Trade Ledger (read-only)
               </h3>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <input
                   list="scan-pairs"
                   value={pair}

@@ -613,9 +613,9 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           BAND 1: DUAL HERO CARD (PORTFOLIO/MARKET HERO + TOP SIGNALS CAROUSEL)
           ===================================================================== */}
       <section className="mf-card mf-band-hero">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span className="mf-eyebrow-text" style={{ marginRight: '4px' }}>ASSET CLASSES:</span>
+        <div className="mf-hero-controls-bar">
+          <div className="mf-scroll-strip">
+            <span className="mf-eyebrow-text" style={{ marginRight: '4px', flexShrink: 0 }}>ASSET CLASSES:</span>
             {([
               { id: 'all', label: 'ALL MARKETS (22)' },
               { id: 'forex', label: 'FOREX (8)' },
@@ -630,16 +630,16 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                 className="mf-pill-action"
                 style={
                   marketCategoryFilter === cat.id
-                    ? { background: '#2563eb', color: '#ffffff', borderColor: '#2563eb' }
-                    : undefined
+                    ? { background: '#2563eb', color: '#ffffff', borderColor: '#2563eb', flexShrink: 0 }
+                    : { flexShrink: 0 }
                 }
               >
                 {cat.label}
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span className="mf-eyebrow-text" style={{ marginRight: '2px' }}>SCALP TIMEFRAME:</span>
+          <div className="mf-scroll-strip">
+            <span className="mf-eyebrow-text" style={{ marginRight: '2px', flexShrink: 0 }}>SCALP TIMEFRAME:</span>
             {([
               { tf: 1, label: '⚡ 1M SCALP' },
               { tf: 5, label: '⚡ 5M SCALP' },
@@ -653,8 +653,8 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                 className="mf-pill-action"
                 style={
                   timeframe === item.tf
-                    ? { background: '#9a3412', color: '#ffffff', borderColor: '#9a3412' }
-                    : undefined
+                    ? { background: '#9a3412', color: '#ffffff', borderColor: '#9a3412', flexShrink: 0 }
+                    : { flexShrink: 0 }
                 }
               >
                 {item.label}
@@ -663,7 +663,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid #eef2f6' }}>
+        <div className="mf-scroll-strip mf-pair-ribbon">
           {filteredQuickPairs.map((qp) => {
             const liveQuote = qp.pair === pair && ticker
               ? { last: ticker.last, change_percent: ticker.changePct }
@@ -677,8 +677,8 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
                 className="mf-pill-action"
                 style={
                   isSelected
-                    ? { background: '#111827', color: '#ffffff', borderColor: '#111827', display: 'inline-flex', gap: '6px', alignItems: 'center' }
-                    : { display: 'inline-flex', gap: '6px', alignItems: 'center' }
+                    ? { background: '#111827', color: '#ffffff', borderColor: '#111827', display: 'inline-flex', gap: '6px', alignItems: 'center', flexShrink: 0 }
+                    : { display: 'inline-flex', gap: '6px', alignItems: 'center', flexShrink: 0 }
                 }
               >
                 <span>{qp.label}</span>
@@ -878,14 +878,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
         </div>
 
         {/* 4 Portfolio & P&L Summary Strip */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '10px',
-            marginBottom: '14px',
-          }}
-        >
+        <div className="mf-portfolio-summary-grid">
           <div className="mf-subcard" style={{ background: '#f8fafc', padding: '12px 14px' }}>
             <div className="mf-micro-label">PORTFOLIO EQUITY (LIVE MARK)</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
@@ -944,13 +937,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
         </div>
 
         {/* Two-column layout: Open Positions with Live P&L + Recent Placed Trades */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-            gap: '14px',
-          }}
-        >
+        <div className="mf-portfolio-split-grid">
           {/* Left: Open Positions & Live Floating Profit/Loss */}
           <div className="mf-subcard" style={{ padding: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
