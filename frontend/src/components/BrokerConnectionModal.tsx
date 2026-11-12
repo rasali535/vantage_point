@@ -373,50 +373,74 @@ export const BrokerConnectionModal: React.FC<BrokerConnectionModalProps> = ({
           </button>
         </div>
 
-        {/* Current Active Status Pill */}
+        {/* Current Active Status Pill & Live Connection Card */}
         <div
           style={{
             margin: '12px 0 16px',
-            padding: '10px 14px',
+            padding: '12px 14px',
             borderRadius: '8px',
             background: brokerStatus?.mode === 'paper' ? '#f8fafc' : '#ecfdf5',
             border: `1px solid ${brokerStatus?.mode === 'paper' ? '#e2e8f0' : '#a7f3d0'}`,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
+            flexDirection: 'column',
             gap: '8px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: brokerStatus?.mode === 'paper' ? '#64748b' : '#059669',
-                display: 'inline-block',
-              }}
-            />
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: brokerStatus?.mode === 'paper' ? '#334155' : '#065f46' }}>
-              {brokerStatus?.label || 'Paper Simulation ($100 Seed)'}
-            </span>
-            {brokerStatus?.live_orders_enabled && (
-              <span className="mf-tag-outline" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fef2f2', fontSize: '0.65rem' }}>
-                LIVE ORDERS ACTIVE
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{
+                  width: '9px',
+                  height: '9px',
+                  borderRadius: '50%',
+                  background: brokerStatus?.mode === 'paper' ? '#64748b' : '#059669',
+                  boxShadow: brokerStatus?.mode !== 'paper' ? '0 0 0 3px rgba(16, 185, 129, 0.25)' : 'none',
+                  display: 'inline-block',
+                }}
+              />
+              <span style={{ fontSize: '0.84rem', fontWeight: 800, color: brokerStatus?.mode === 'paper' ? '#334155' : '#065f46' }}>
+                {brokerStatus?.label || 'Paper Simulation ($100 Seed)'}
               </span>
+              {brokerStatus?.mode !== 'paper' && (
+                <span className="mf-tag-outline" style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ffffff', fontSize: '0.65rem', fontWeight: 700 }}>
+                  CONNECTED &amp; ACTIVE
+                </span>
+              )}
+              {brokerStatus?.live_orders_enabled && (
+                <span className="mf-tag-outline" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fef2f2', fontSize: '0.65rem' }}>
+                  LIVE ORDERS DISPATCHING
+                </span>
+              )}
+            </div>
+            {brokerStatus?.mode !== 'paper' && (
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                disabled={loading}
+                className="mf-btn-ghost-sm"
+                style={{ fontSize: '0.72rem', color: '#dc2626', borderColor: '#fca5a5' }}
+              >
+                <Power size={11} style={{ marginRight: '4px' }} /> Disconnect to Paper
+              </button>
             )}
           </div>
+
           {brokerStatus?.mode !== 'paper' && (
-            <button
-              type="button"
-              onClick={handleDisconnect}
-              disabled={loading}
-              className="mf-btn-ghost-sm"
-              style={{ fontSize: '0.72rem', color: '#dc2626', borderColor: '#fca5a5' }}
-            >
-              <Power size={11} style={{ marginRight: '4px' }} /> Disconnect to Paper
-            </button>
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '0.73rem', color: '#065f46', paddingTop: '4px', borderTop: '1px solid #d1fae5' }}>
+              {brokerStatus?.masked_key && (
+                <span>Key: <strong style={{ fontFamily: 'monospace' }}>{brokerStatus.masked_key}</strong></span>
+              )}
+              {brokerStatus?.details?.server && (
+                <span>Server: <strong>{brokerStatus.details.server}</strong></span>
+              )}
+              {brokerStatus?.details?.login && (
+                <span>Login: <strong>#{brokerStatus.details.login}</strong></span>
+              )}
+              <span>Status: <strong>Streaming signals</strong></span>
+              {brokerStatus?.last_tested_at && (
+                <span>Last Handshake: <strong>{new Date(brokerStatus.last_tested_at).toLocaleTimeString()}</strong></span>
+              )}
+            </div>
           )}
         </div>
 
