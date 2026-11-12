@@ -11,7 +11,7 @@ const getApiBaseUrl = () => {
 
   if (import.meta.env.DEV) return 'http://localhost:8000';
 
-  return 'https://ras-ali-ai-trader-api.onrender.com';
+  return 'https://vantage-point-1qv7.onrender.com';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

@@ -17,7 +17,7 @@ jobs:
     name: Build Vite frontend and deploy to Hostinger
     runs-on: ubuntu-latest
     env:
-      VITE_API_URL: https://ras-ali-ai-trader-api.onrender.com
+      VITE_API_URL: https://vantage-point-1qv7.onrender.com
       HOSTINGER_SFTP_HOST: ${{ secrets.HOSTINGER_SFTP_HOST }}
       HOSTINGER_SFTP_USERNAME: ${{ secrets.HOSTINGER_SFTP_USERNAME }}
       HOSTINGER_SFTP_PRIVATE_KEY: ${{ secrets.HOSTINGER_SFTP_PRIVATE_KEY }}
