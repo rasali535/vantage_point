@@ -53,52 +53,63 @@ const AuditLog = () => {
           zIndex: 0
         }}></div>
 
-        {logs.map((log) => (
-          <div key={log.id || log._id} style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
-            <div style={{ 
-              position: 'absolute', 
-              left: '-2rem', 
-              top: '4px',
-              width: '16px', 
-              height: '16px', 
-              borderRadius: '50%', 
-              background: log.status === 'success' ? 'var(--success)' : (log.status === 'warning' ? 'var(--warning)' : 'var(--primary)'),
-              border: '4px solid var(--background)'
-            }}></div>
-            
-            <div className="glass card" style={{ padding: '1.5rem', marginLeft: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{log.agent}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                      {log.time || new Date(log.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{log.action}</h3>
-                </div>
-                <span className={`badge ${log.status === 'success' ? 'badge-success' : 'badge-warning'}`}>
-                  {log.status.replace('_', ' ')}
-                </span>
-              </div>
-              
+        {logs.map((log, idx) => {
+          const status = String(log.status || log.event_type || 'success').toLowerCase();
+          const isSuccess = status.includes('success') || status.includes('filled') || status.includes('connected');
+          const isWarning = status.includes('warning') || status.includes('rejected') || status.includes('error');
+          const statusText = String(log.status || log.event_type || 'LOGGED').replace(/_/g, ' ');
+          const agentName = log.agent || (log.event_type ? String(log.event_type).replace(/_/g, ' ') : 'SYSTEM');
+          const actionText = log.action || log.event_type || 'System Event';
+          const timeText = log.time || (log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Just now');
+          const reasoningText = log.reasoning || (log.exchange ? `Exchange: ${String(log.exchange).toUpperCase()} (Key: ${log.masked_key || '—'})` : '') || (log.server ? `MetaTrader Server: ${log.server}` : '') || 'System audit log entry recorded.';
+
+          return (
+            <div key={log.id || log._id || idx} style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
               <div style={{ 
-                background: '#f4f6f9', 
-                padding: '1rem', 
-                borderRadius: '8px', 
-                fontSize: '0.9rem', 
-                color: 'var(--text-muted)',
-                lineHeight: 1.6,
-                border: '1px solid rgba(36, 86, 230, 0.3)'
-              }}>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text)', fontWeight: 500 }}>
-                  <ShieldCheck size={16} /> Agent Reasoning
+                position: 'absolute', 
+                left: '-2rem', 
+                top: '4px',
+                width: '16px', 
+                height: '16px', 
+                borderRadius: '50%', 
+                background: isSuccess ? 'var(--success)' : (isWarning ? 'var(--warning)' : 'var(--primary)'),
+                border: '4px solid var(--background)'
+              }}></div>
+              
+              <div className="glass card" style={{ padding: '1.5rem', marginLeft: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{agentName}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                        {timeText}
+                      </span>
+                    </div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{actionText}</h3>
+                  </div>
+                  <span className={`badge ${isSuccess ? 'badge-success' : (isWarning ? 'badge-warning' : '')}`}>
+                    {statusText}
+                  </span>
                 </div>
-                {log.reasoning}
+                
+                <div style={{ 
+                  background: '#f4f6f9', 
+                  padding: '1rem', 
+                  borderRadius: '8px', 
+                  fontSize: '0.9rem', 
+                  color: 'var(--text-muted)',
+                  lineHeight: 1.6,
+                  border: '1px solid rgba(36, 86, 230, 0.3)'
+                }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text)', fontWeight: 500 }}>
+                    <ShieldCheck size={16} /> Reasoning / Details
+                  </div>
+                  {reasoningText}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

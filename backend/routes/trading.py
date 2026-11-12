@@ -1000,6 +1000,10 @@ async def connect_broker_api_key(req: BrokerConnectApiKeyRequest):
     await db.audit_logs.insert_one({
         "timestamp": now_iso,
         "event_type": "BROKER_API_KEY_CONNECTED",
+        "agent": "broker_manager",
+        "action": f"Connected {req.exchange.upper()} API Key",
+        "status": "connected",
+        "reasoning": f"Operator connected {req.exchange.upper()} API Key ({masked}). Live orders: {req.live_orders_enabled}.",
         "exchange": req.exchange,
         "masked_key": masked,
         "live_orders_enabled": req.live_orders_enabled,
@@ -1041,6 +1045,10 @@ async def connect_broker_meta_trader(req: BrokerConnectMetaTraderRequest):
     await db.audit_logs.insert_one({
         "timestamp": now_iso,
         "event_type": "BROKER_METATRADER_CONNECTED",
+        "agent": "broker_manager",
+        "action": f"Connected MetaTrader {req.platform} Bridge",
+        "status": "connected",
+        "reasoning": f"Operator connected MT{req.platform.replace('MT', '')} ({req.server}) via {req.method}.",
         "platform": req.platform,
         "server": req.server,
         "login": req.login,
@@ -1078,6 +1086,10 @@ async def disconnect_broker():
     await db.audit_logs.insert_one({
         "timestamp": now_iso,
         "event_type": "BROKER_DISCONNECTED_REVERTED_TO_PAPER",
+        "agent": "broker_manager",
+        "action": "Disconnected External Broker",
+        "status": "success",
+        "reasoning": "Reverted safely to Paper Simulation desk.",
     })
     return {"status": "disconnected", "mode": "paper", "message": "Reverted safely to Paper Simulation desk."}
 
