@@ -68,7 +68,7 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
         <div className="mf-section-bar" style={{ marginBottom: '14px' }}>
           <div className="mf-section-title-left">
             <span className="mf-dot mf-dot-terra" />
-            <span className="mf-card-heading">SIX-AGENT BOARDROOM · LIVE DELIBERATION LEDGER</span>
+            <span className="mf-card-heading">MULTI-AGENT BOARDROOM · LIVE ANALYSIS LEDGER</span>
           </div>
           <button type="button" className="mf-pill-action" onClick={onRefresh}>
             <RefreshCcw size={12} style={{ marginRight: 5 }} /> REFRESH
@@ -77,10 +77,10 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
 
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '10px' }}>
           {[
-            { name: 'Market Intelligence', status: 'Meta AI · verified FX & crypto context', color: '#2563eb' },
+            { name: 'Market Intelligence', status: 'Hugging Face Qwen advisory · when configured', color: '#2563eb' },
             { name: 'Technical Analyst', status: 'EMA · RSI · ATR calculations', color: '#10b981' },
-            { name: 'Strategy', status: 'Meta AI · BUY / SELL / HOLD proposal', color: '#2563eb' },
-            { name: 'Risk Manager', status: 'Meta AI advisory · deterministic limits', color: '#9a3412' },
+            { name: 'Strategy', status: 'Deterministic signal · Qwen research advisory', color: '#2563eb' },
+            { name: 'Risk Manager', status: 'Deterministic risk policy · authoritative', color: '#9a3412' },
             { name: 'Execution', status: 'Risk preflight · paper simulation gate', color: '#b45309' },
             { name: 'Performance', status: 'Confirmed closed trades only', color: '#10b981' },
           ].map((agent) => (
@@ -98,7 +98,7 @@ const Boardroom = ({ deliberations, loading, onRefresh }: { deliberations: any[]
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {deliberations.length === 0 && !loading && (
           <div className="mf-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
-            No six-agent analysis cycles have been recorded yet. Use the pair scanner in the top bar to start the boardroom.
+            No analysis cycles have been recorded yet. Use the pair scanner in the top bar to start the boardroom.
           </div>
         )}
         {deliberations.map((d: any, idx: number) => {
@@ -311,7 +311,7 @@ const App: React.FC = () => {
       });
       setScanBanner({
         type: 'ok',
-        text: `Six-agent scan completed for ${data.pair}: Proposed ${data.decision?.action || 'HOLD'} (${Math.round((data.decision?.confidence || 0) * 100)}% confidence).`,
+        text: `Market analysis completed for ${data.pair}: Proposed ${data.decision?.action || 'HOLD'} (${Math.round((data.decision?.confidence || 0) * 100)}% confidence).`,
       });
       await Promise.all([fetchStatus(), fetchBoardroom()]);
     } catch (err: any) {
@@ -361,7 +361,7 @@ const App: React.FC = () => {
                 VANTAGE POINT · 1M/5M SCALPER · FX, METALS, INDICES &amp; CRYPTO
               </div>
               <div className="mf-brand-title">
-                MUSE SPARK 1.3 <span className="mf-brand-sep">·</span>{' '}
+                VANTAGE POINT <span className="mf-brand-sep">·</span>{' '}
                 <span className="mf-brand-accent">VANTAGE POINT</span>
               </div>
             </div>
@@ -555,13 +555,13 @@ const App: React.FC = () => {
             <span className="mf-footer-online">
               <i /> AGENT ONLINE
             </span>
-            <span>MODEL: MUSE-SPARK-1.3</span>
+            <span>RESEARCH MODEL: HUGGING FACE QWEN (WHEN CONFIGURED)</span>
             <span>MARKETS: 12 FX · 4 METALS · 6 INDICES · 10 CRYPTO</span>
             <span>RISK POLICY: {(status?.risk_policy_status || 'CONFIGURED').toUpperCase()}</span>
             <span className="mf-footer-blue">MODE: PAPER &amp; RESEARCH</span>
           </div>
           <div className="mf-footer-right">
-            STACK: VANTAGE-POINT · META-AI · KRAKEN FX
+            STACK: VANTAGE POINT · HUGGING FACE · KRAKEN MARKET DATA
           </div>
         </footer>
       </div>
