@@ -734,7 +734,6 @@ async def _execute_signal(
         stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         if conf_float >= 0.80:
             conviction_pct = D("32")
-            risk_multiplier = D("1.0")
             conviction_tier = "HIGH_CONVICTION"
             target_distance = max(stop_distance * D("2.4"), entry_estimate * D("0.0120"))
         elif conf_float >= 0.70:
