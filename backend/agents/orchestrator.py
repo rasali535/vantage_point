@@ -87,7 +87,7 @@ class TradingOrchestrator:
             ),
         )
         # Optional Hugging Face research note: advisory only; it cannot change the action or confidence.
-        if os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "true").lower() == "true" and huggingface_client.configured:
+        if os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "false").lower() == "true" and huggingface_client.configured:
             try:
                 advisory = await asyncio.wait_for(
                     huggingface_client.chat([
