@@ -42,7 +42,7 @@ const ChatBot = () => {
       setMessages([...newMessages, { role: 'assistant', content: response.data.reply }]);
     } catch (error) {
       console.error('Chat error:', error);
-      setMessages([...newMessages, { role: 'assistant', content: 'Sorry, I am having trouble connecting to my reasoning core. Please try again later.' }]);
+      setMessages([...newMessages, { role: 'assistant', content: 'Sorry, I am having trouble connecting to Hugging Face. Check the model configuration and try again.' }]);
     } finally {
       setIsLoading(false);
     }
