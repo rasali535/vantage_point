@@ -93,7 +93,10 @@ class PaperAutopilotSizingRegressionTests(unittest.IsolatedAsyncioTestCase):
             require_stop_loss=True,
         )
 
+        saved_accounts = []
+
         async def save_account(_db, _before, after):
+            saved_accounts.append(after)
             return after
 
         with patch.dict(os.environ, {
@@ -110,8 +113,9 @@ class PaperAutopilotSizingRegressionTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result["decision"], "BUY")
-        self.assertGreater(Decimal(result["fill"]["take_profit"]), Decimal(result["fill"]["fill_price"]))
-        self.assertLess(Decimal(result["fill"]["stop_loss"]), Decimal(result["fill"]["fill_price"]))
+        saved_position = saved_accounts[-1]["positions"]["BTC/USD"]
+        self.assertGreater(Decimal(saved_position["take_profit"]), Decimal(result["fill"]["fill_price"]))
+        self.assertLess(Decimal(saved_position["stop_loss"]), Decimal(result["fill"]["fill_price"]))
         self.assertEqual(result["fill"]["execution_mode"], "paper")
         self.assertFalse(result["fill"]["exchange_order_submitted"])
 
