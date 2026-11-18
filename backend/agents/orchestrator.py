@@ -93,8 +93,8 @@ class TradingOrchestrator:
                     huggingface_client.chat([
                         {"role": "system", "content": "You are a trading research analyst. Give a concise, evidence-bound interpretation. Do not recommend changing the supplied action, invent data, or issue order instructions."},
                         {"role": "user", "content": (
-                            f"Pair: {pair}\\nTicker: {ticker}\\nMarket context: {market.model_dump(mode='json')}\\n"
-                            f"Technical report: {technical.model_dump(mode='json')}\\nRisk advisory: {risk.model_dump(mode='json')}\\n"
+                            f"Pair: {pair}\nTicker: {ticker}\nMarket context: {market.model_dump(mode='json')}\n"
+                            f"Technical report: {technical.model_dump(mode='json')}\nRisk advisory: {risk.model_dump(mode='json')}\n"
                             f"Deterministic action: {proposal.action.value}; confidence: {proposal.confidence}. "
                             "Provide a brief independent research note and state uncertainty."
                         )},
