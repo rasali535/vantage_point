@@ -534,6 +534,34 @@ async def get_paper_account(x_paper_token: str | None = Header(default=None)):
     return account_summary(account, prices)
 
 
+@router.get("/paper/diagnostics")
+async def get_paper_diagnostics(x_paper_token: str | None = Header(default=None)):
+    """Return non-secret identity and consistency metadata for the authoritative paper store."""
+    _require_paper_access(x_paper_token)
+    db = await get_database()
+    account = await db.paper_accounts.find_one({"_id": "default"}, {
+        "version": 1, "cash": 1, "positions": 1, "orders": 1,
+        "execution_enabled": 1,
+    })
+    runtime = await db.paper_runtime.find_one({"_id": "autopilot"}, {
+        "enabled": 1, "mode": 1, "exchange_order_submitted": 1,
+    }) or {}
+    positions = (account or {}).get("positions") or {}
+    orders = (account or {}).get("orders") or []
+    return {
+        "database_name": db.name,
+        "account_exists": account is not None,
+        "account_version": int((account or {}).get("version", 0)),
+        "fill_count": len(orders),
+        "open_position_count": len(positions),
+        "autopilot_enabled": runtime.get("enabled") is True,
+        "execution_mode": runtime.get("mode", "paper"),
+        "execution_enabled": (account or {}).get("execution_enabled") is True,
+        "exchange_order_submitted": runtime.get("exchange_order_submitted") is True,
+        "server_time": utc_now(),
+    }
+
+
 @router.get("/paper/orders")
 async def get_paper_orders(x_paper_token: str | None = Header(default=None), limit: int = 10000):
     _require_paper_access(x_paper_token)
