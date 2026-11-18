@@ -734,7 +734,7 @@ async def _execute_signal(
         stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         if conf_float >= 0.80:
             conviction_pct = D("32")
-            risk_multiplier = D("1.35")
+            risk_multiplier = D("1.0")
             conviction_tier = "HIGH_CONVICTION"
             target_distance = max(stop_distance * D("2.4"), entry_estimate * D("0.0120"))
         elif conf_float >= 0.70:
@@ -744,7 +744,7 @@ async def _execute_signal(
             target_distance = max(stop_distance * D("1.8"), entry_estimate * D("0.0070"))
         else:
             conviction_pct = D("14")
-            risk_multiplier = D("0.75")
+            risk_multiplier = D("1.0")
             conviction_tier = "MODERATE_CONVICTION"
             target_distance = max(stop_distance * D("1.3"), entry_estimate * D("0.0035"))
         stop = entry_estimate - stop_distance
@@ -762,7 +762,7 @@ async def _execute_signal(
             allocatable_cash,
             entry_estimate,
             stop,
-            policy.max_trade_risk_pct * risk_multiplier * D("0.995"),
+            policy.max_trade_risk_pct * D("0.995"),
             fee_rate,
         )
         if quantity <= 0 or (quantity * entry_estimate) < D("2"):
