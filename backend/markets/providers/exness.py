@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -16,6 +17,9 @@ from urllib.parse import urlsplit
 import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExnessConfigurationError(RuntimeError):
@@ -235,6 +239,19 @@ class ExnessReadOnlyClient:
                     event = json.loads(message)
                     if not isinstance(event, dict):
                         continue
+                    # Exness reports subscription failures as structured messages
+                    # without an instrument field. Surface those immediately instead
+                    # of silently waiting until the initial-tick timeout.
+                    if "error_message" in event or "code" in event and "instrument" not in event:
+                        error_code = event.get("code")
+                        error_message = event.get("error_message", "REQUEST_INVALID")
+                        if isinstance(error_message, str):
+                            error_message = re.sub(r"[^A-Z0-9_ -]", "", error_message.upper())[:80]
+                        else:
+                            error_message = "REQUEST_INVALID"
+                        raise ExnessAPIError(
+                            f"Exness rejected tick subscription (code={error_code}, reason={error_message})."
+                        )
                     symbol = event.get("instrument")
                     if symbol not in instruments:
                         continue
@@ -246,9 +263,29 @@ class ExnessReadOnlyClient:
                         "timestamp": event.get("timestamp"), "provider": "exness",
                     }
         except Exception as exc:
-            if isinstance(exc, ExnessConfigurationError):
+            if isinstance(exc, (ExnessConfigurationError, ExnessAPIError)):
                 raise
-            raise ExnessAPIError("Exness live tick subscription failed or timed out.") from exc
+            # websockets.InvalidStatus exposes the HTTP response on handshake
+            # failures; ConnectionClosed exposes a close code/reason. Keep these
+            # diagnostics credential-free and avoid logging headers or response bodies.
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            close_code = getattr(exc, "code", None)
+            close_reason = getattr(exc, "reason", None)
+            logger.warning(
+                "exness_ticks_ws_failed error_type=%s http_status=%s close_code=%s close_reason=%s",
+                type(exc).__name__, status, close_code,
+                str(close_reason)[:120] if close_reason is not None else None,
+            )
+            if status is not None:
+                detail = f"Exness WebSocket handshake rejected (HTTP {status})."
+            elif close_code is not None:
+                detail = f"Exness WebSocket closed (code={close_code}, reason={str(close_reason)[:80]})."
+            elif isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+                detail = "Exness WebSocket timed out waiting for initial ticks."
+            else:
+                detail = f"Exness WebSocket failed ({type(exc).__name__})."
+            raise ExnessAPIError(detail) from exc
         if not ticks:
             raise ExnessAPIError("Exness returned no initial ticks for the requested instruments.")
         return [ticks[symbol] for symbol in instruments if symbol in ticks]
