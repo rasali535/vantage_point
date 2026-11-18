@@ -4,11 +4,8 @@ import uuid
 import os
 from typing import Any, Dict, Literal
 import hmac
-import hashlib
-import socket
 import time
 
-import httpx
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
@@ -16,7 +13,6 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from agents.kraken import KrakenAgent
-from agents.meta_ai import meta_ai, MetaAIError, meta_http_transport
 from agents.orchestrator import trading_orchestrator, AgentStageTimeout
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
@@ -112,11 +108,7 @@ async def get_trading_status():
     except Exception as exc:
         logger.warning("status_paper_portfolio_error error=%s", type(exc).__name__)
 
-    research_model = os.getenv("RESEARCH_MODEL", "muse-spark-1.3").split("/")[-1]
-    trading_model = os.getenv("TRADING_MODEL", "muse-spark-1.3").split("/")[-1]
     risk_policy_configured = _active_risk_policy() is not None
-    meta_status = "ready" if meta_ai.api_key else "not_configured"
-    meta_risk_status = "advisory_only" if meta_ai.api_key else "not_configured"
     return {
         "mode": "analysis_only",
         "execution_enabled": False,
@@ -129,13 +121,13 @@ async def get_trading_status():
         "paper_portfolio": paper_portfolio,
         "history": [serialize_document(item) for item in history],
         "pnl_24h": paper_portfolio.get("total_pnl") if paper_portfolio else None,
-        "active_strategy": f"Multi-Asset Paper & Analysis ({trading_model} + {research_model})",
+        "active_strategy": "Multi-Asset Paper & Analysis (deterministic models)",
         "data_source": "kraken_spot_and_global_macro",
         "agents": [
-            {"id": "market_intelligence", "status": meta_status, "provider": "meta"},
+            {"id": "market_intelligence", "status": "ready", "provider": "deterministic"},
             {"id": "technical_analyst", "status": "ready", "provider": "deterministic"},
-            {"id": "strategy", "status": meta_status, "provider": "meta"},
-            {"id": "risk_manager", "status": meta_risk_status, "provider": "meta"},
+            {"id": "strategy", "status": "ready", "provider": "deterministic"},
+            {"id": "risk_manager", "status": "advisory_only", "provider": "deterministic"},
             {"id": "execution", "status": "disabled", "provider": "deterministic_risk_gate"},
             {"id": "performance", "status": "read_only", "provider": "mongodb_ledger"},
         ],
@@ -208,105 +200,13 @@ async def get_market_overview(pair: str = "XAU/USD", interval: int = 5):
 
 @router.get("/meta/readiness")
 async def get_meta_readiness():
-    # No secrets are exposed; the key appears only as a fingerprint.
-    return await meta_ai.check_readiness()
-
-
-@router.get("/meta/debug/upstream")
-async def debug_meta_upstream():
-    """Probe the Meta API from inside this process and report raw results.
-
-    Debugging aid for path-dependent upstream failures. Reports statuses,
-    response prefixes, DNS resolution, and header shape only. The API key
-    itself is never included; it appears solely as a fingerprint.
-    """
-    meta_ai._refresh_credentials()
-    fingerprint = (
-        hashlib.sha256(meta_ai.api_key.encode("utf-8")).hexdigest()[:16]
-        if meta_ai.api_key
-        else "missing"
-    )
-    report: Dict[str, Any] = {
-        "key_configured": bool(meta_ai.api_key),
-        "key_fingerprint": fingerprint,
-        "base_url": meta_ai.base_url,
+    """Compatibility endpoint: external Meta inference has been retired."""
+    return {
+        "status": "disabled",
+        "configured": False,
+        "provider": "deterministic",
+        "detail": "External Meta inference is disabled. Deterministic analysis agents are active.",
     }
-    try:
-        addr_infos = socket.getaddrinfo("api.meta.ai", 443, type=socket.SOCK_STREAM)
-        seen = set()
-        dns: list = []
-        for family, _, _, _, sockaddr in addr_infos:
-            entry = f"{family!s}:{sockaddr[0]}"
-            if entry not in seen:
-                seen.add(entry)
-                dns.append(entry)
-        report["dns_api_meta_ai"] = dns
-    except Exception as exc:
-        report["dns_api_meta_ai"] = {"error": type(exc).__name__}
-
-    headers = meta_ai._headers()
-    report["request_headers"] = {
-        name: ("<redacted-present>" if name.lower() == "authorization" else value)
-        for name, value in headers.items()
-    }
-    report["auth_header_length"] = len(headers.get("Authorization", ""))
-
-    proxy_vars = []
-    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
-        if os.getenv(var) or os.getenv(var.lower()):
-            proxy_vars.append(var)
-    report["proxy_env_present"] = proxy_vars or "none"
-
-    tcp_results: Any = []
-    try:
-        for family, _, _, _, sockaddr in socket.getaddrinfo(
-            "api.meta.ai", 443, type=socket.SOCK_STREAM
-        ):
-            ip = sockaddr[0]
-            started = time.monotonic()
-            try:
-                sock = socket.create_connection((ip, 443), timeout=4)
-                elapsed_ms = round((time.monotonic() - started) * 1000)
-                sock.close()
-                tcp_results.append(
-                    {"ip": ip, "family": f"{family!s}", "connected": True, "elapsed_ms": elapsed_ms}
-                )
-                break
-            except Exception as exc:
-                tcp_results.append(
-                    {"ip": ip, "family": f"{family!s}", "connected": False, "error": type(exc).__name__}
-                )
-    except Exception as exc:
-        tcp_results = {"error": type(exc).__name__}
-    report["tcp_connect_probe"] = tcp_results
-
-    chat_payload = {
-        "model": "muse-spark-1.3",
-        "messages": [{"role": "user", "content": "Reply with the word OK."}],
-        "max_completion_tokens": 5,
-    }
-    report["chat_payload_sent"] = chat_payload
-
-    async def _probe(method: str, path: str, payload: Any = None) -> Dict[str, Any]:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0), transport=meta_http_transport()) as client:
-                if method == "GET":
-                    response = await client.get(f"{meta_ai.base_url}{path}", headers=headers)
-                else:
-                    response = await client.post(
-                        f"{meta_ai.base_url}{path}", headers=headers, json=payload
-                    )
-            return {
-                "http_status": response.status_code,
-                "content_type": response.headers.get("content-type"),
-                "body_prefix": response.text[:600],
-            }
-        except Exception as exc:
-            return {"error": type(exc).__name__, "detail": str(exc)[:200]}
-
-    report["get_models"] = await _probe("GET", "/models")
-    report["post_chat_completions"] = await _probe("POST", "/chat/completions", chat_payload)
-    return report
 
 
 @router.get("/ledger")
@@ -501,20 +401,6 @@ async def scan_and_analyze_route(payload: ScanRequest | None = None):
         return result
     except HTTPException:
         raise
-    except MetaAIError as exc:
-        elapsed_ms = round((datetime.now(timezone.utc) - started).total_seconds() * 1000)
-        logger.warning(
-            "trading_scan_meta_provider_failed request_id=%s elapsed_ms=%d code=%s error=%s",
-            request_id, elapsed_ms, exc.error_code, exc.message,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "message": f"Market analysis unavailable: {exc.message} No order was submitted.",
-                "error_code": exc.error_code or "meta_provider_error",
-                "request_id": request_id,
-            },
-        ) from exc
     except Exception as exc:
         # Keep provider details server-side; never fall back to fabricated data.
         if isinstance(exc, AgentStageTimeout):
