@@ -167,3 +167,88 @@ class ExnessReadOnlyClient:
         if not isinstance(instruments, list) or any(not isinstance(item, str) for item in instruments):
             raise ExnessAPIError("Exness returned an invalid instrument list.")
         return instruments
+
+
+    async def get_candles(
+        self, instrument: str, timeframe: str = "M15", count: int = 100, price_type: str = "both"
+    ) -> list[dict]:
+        """Read historical bid/ask candles; this method cannot mutate account state."""
+        from datetime import datetime, timedelta, timezone
+        from urllib.parse import urlencode
+
+        allowed_timeframes = {"S1", "S5", "S15", "M1", "M3", "M5", "M10", "M15", "M30", "H1", "H2", "H4", "D1", "W1", "MN"}
+        if instrument not in {"XAUUSD", "EURUSD", "GBPUSD"}:
+            raise ExnessConfigurationError("Instrument is not enabled for the initial Exness market-data rollout.")
+        if timeframe not in allowed_timeframes:
+            raise ExnessConfigurationError("Unsupported Exness candle timeframe.")
+        if not 1 <= count <= 500:
+            raise ExnessConfigurationError("Candle count must be between 1 and 500.")
+        if price_type not in {"bid", "ask", "both"}:
+            raise ExnessConfigurationError("Candle price_type must be bid, ask or both.")
+        seconds = {"S1": 1, "S5": 5, "S15": 15, "M1": 60, "M3": 180, "M5": 300, "M10": 600, "M15": 900, "M30": 1800, "H1": 3600, "H2": 7200, "H4": 14400, "D1": 86400, "W1": 604800, "MN": 2592000}[timeframe]
+        start = datetime.now(timezone.utc) - timedelta(seconds=seconds * count)
+        query = urlencode({
+            "instrument": instrument,
+            "timeframe": timeframe,
+            "from": start.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "count": count,
+            "price_type": price_type,
+        })
+        access_point = await self.discover_access_point()
+        result = await self._get_json(
+            access_point,
+            f"/v1/market-data/accounts/{self.account_id}/candles?{query}",
+        )
+        candles = result.get("candles")
+        if not isinstance(candles, list):
+            raise ExnessAPIError("Exness returned an invalid candle history response.")
+        return candles
+
+    async def get_ticks(self, instruments: list[str]) -> list[dict]:
+        """Open one signed read-only WebSocket subscription and collect initial ticks."""
+        import asyncio
+        import websockets
+
+        allowed = {"XAUUSD", "EURUSD", "GBPUSD"}
+        if not instruments or len(instruments) > 3 or any(item not in allowed for item in instruments):
+            raise ExnessConfigurationError("Only XAUUSD, EURUSD and GBPUSD are enabled for initial tick streaming.")
+        access_point = await self.discover_access_point()
+        path = f"/v1/server-events/accounts/{self.account_id}/ws/ticks"
+        headers = self._signed_get_headers(path)
+        ws_url = "wss://" + access_point.removeprefix("https://") + path
+        ticks: dict[str, dict] = {}
+        try:
+            async with websockets.connect(
+                ws_url, additional_headers=headers, open_timeout=12, close_timeout=2,
+                ping_interval=20, ping_timeout=20,
+            ) as socket:
+                await socket.send(json.dumps({
+                    "id": "vantage-point-initial-ticks",
+                    "subscribe": {"event": "ticks", "instruments": instruments},
+                }))
+                deadline = asyncio.get_running_loop().time() + 12
+                while set(ticks) != set(instruments):
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        break
+                    message = await asyncio.wait_for(socket.recv(), timeout=remaining)
+                    event = json.loads(message)
+                    if not isinstance(event, dict):
+                        continue
+                    symbol = event.get("instrument")
+                    if symbol not in instruments:
+                        continue
+                    bid, ask = event.get("bid"), event.get("ask")
+                    if not isinstance(bid, (int, float)) or not isinstance(ask, (int, float)) or bid <= 0 or ask < bid:
+                        continue
+                    ticks[symbol] = {
+                        "instrument": symbol, "bid": bid, "ask": ask,
+                        "timestamp": event.get("timestamp"), "provider": "exness",
+                    }
+        except Exception as exc:
+            if isinstance(exc, ExnessConfigurationError):
+                raise
+            raise ExnessAPIError("Exness live tick subscription failed or timed out.") from exc
+        if not ticks:
+            raise ExnessAPIError("Exness returned no initial ticks for the requested instruments.")
+        return [ticks[symbol] for symbol in instruments if symbol in ticks]
