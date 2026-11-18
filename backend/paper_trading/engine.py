@@ -14,6 +14,7 @@ from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
 D = Decimal
 QTY_STEP = D("0.00000001")
 MONEY_STEP = D("0.01")
+INTERNAL_STEP = D("0.00000001")
 SUPPORTED_FIAT_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"}
 SUPPORTED_METALS = {"XAU", "XAG", "XPT", "XPD", "XCU", "PAXG", "XAUT"}
 SUPPORTED_INDICES = {"SPX500", "NAS100", "US30", "UK100", "GER40", "JPN225"}
@@ -138,10 +139,10 @@ def simulate_order(
     slip = slippage_bps / D("10000")
     fill_price = price * (D("1") + slip if side == "BUY" else D("1") - slip)
     fill_price = _quantize(fill_price, D("0.00000001"))
-    gross = _quantize(qty * fill_price, MONEY_STEP)
+    gross = _quantize(qty * fill_price, INTERNAL_STEP)
     if gross <= 0:
         raise PaperTradeError("Order notional value is too small to simulate.")
-    fee = _quantize(gross * fee_rate, MONEY_STEP)
+    fee = _quantize(gross * fee_rate, INTERNAL_STEP)
     total = gross + fee
     updated = deepcopy(account)
     positions = updated.setdefault("positions", {})
@@ -190,7 +191,7 @@ def simulate_order(
         old_qty = dec(position["quantity"], "position quantity") if position else D("0")
         old_cost = dec(position["average_entry"], "average_entry") * old_qty if position else D("0")
         new_qty = old_qty + qty
-        avg = (old_cost + total) / new_qty
+        avg = _quantize((old_cost + total) / new_qty, INTERNAL_STEP)
         positions[pair] = {
             "quantity": str(_quantize(new_qty, QTY_STEP)),
             "average_entry": str(_quantize(avg, D("0.00000001"))),
@@ -198,7 +199,7 @@ def simulate_order(
             "take_profit": str(target) if target is not None else (position or {}).get("take_profit"),
             "opened_at": (position or {}).get("opened_at") or datetime.now(timezone.utc).isoformat(),
         }
-        updated["cash"] = str(_quantize(now_cash - total, MONEY_STEP))
+        updated["cash"] = str(_quantize(now_cash - total, INTERNAL_STEP))
     else:
         if not position:
             raise PaperTradeError("No paper position exists for this pair to sell.")
@@ -207,10 +208,10 @@ def simulate_order(
             raise PaperTradeError("Paper SELL quantity exceeds the held spot position; shorting is disabled.")
         proceeds = gross - fee
         avg_entry = dec(position["average_entry"], "average_entry")
-        realized = (fill_price - avg_entry) * qty - fee
-        updated["cash"] = str(_quantize(now_cash + proceeds, MONEY_STEP))
+        realized = proceeds - (avg_entry * qty)
+        updated["cash"] = str(_quantize(now_cash + proceeds, INTERNAL_STEP))
         prior_realized, _ = realized_pnl_from_orders(updated)
-        updated["realized_pnl"] = str(_quantize(prior_realized + realized, MONEY_STEP))
+        updated["realized_pnl"] = str(_quantize(prior_realized + realized, INTERNAL_STEP))
         remaining = held - qty
         if remaining == 0:
             positions.pop(pair, None)
@@ -229,7 +230,7 @@ def simulate_order(
         "fee_usd": str(fee),
         "fee_rate": str(fee_rate),
         "slippage_bps": str(slippage_bps),
-        "realized_pnl_usd": str(_quantize(realized, MONEY_STEP)) if realized is not None else None,
+        "realized_pnl_usd": str(_quantize(realized, INTERNAL_STEP)) if realized is not None else None,
         "status": "filled",
         "execution_mode": "paper",
         "exchange_order_submitted": False,
@@ -241,16 +242,47 @@ def simulate_order(
 
 
 def realized_pnl_from_orders(account: dict) -> tuple[Decimal, str]:
-    """Rebuild realized P&L from persisted SELL fills; use legacy field only for old empty ledgers."""
-    sell_fills = [
-        order for order in account.get("orders", [])
-        if str(order.get("side", "")).upper() == "SELL"
-        and order.get("realized_pnl_usd") is not None
-    ]
-    if sell_fills:
-        total = sum((dec(order["realized_pnl_usd"], "order realized_pnl_usd") for order in sell_fills), D("0"))
-        return _quantize(total, MONEY_STEP), "sell_fills"
-    return _quantize(dec(account.get("realized_pnl", "0"), "realized_pnl"), MONEY_STEP), "legacy_account_field"
+    """Replay persisted fills using the same rounded cash amounts used by the simulator."""
+    orders = account.get("orders", [])
+    if not orders:
+        return _quantize(dec(account.get("realized_pnl", "0"), "realized_pnl"), INTERNAL_STEP), "legacy_account_field"
+
+    replay_positions: dict[str, dict[str, Decimal]] = {}
+    realized = D("0")
+    replayed = False
+    for order in orders:
+        pair = str(order.get("pair", "")).upper()
+        side = str(order.get("side", "")).upper()
+        if not pair or side not in {"BUY", "SELL"}:
+            continue
+        try:
+            qty = dec(order.get("quantity"), "order quantity")
+            fill_price = dec(order.get("fill_price"), "order fill_price")
+            gross = dec(order.get("gross_usd"), "order gross_usd") if order.get("gross_usd") is not None else qty * fill_price
+            fee = dec(order.get("fee_usd", "0"), "order fee_usd")
+        except PaperTradeError:
+            continue
+        if qty <= 0 or gross < 0 or fee < 0:
+            continue
+        replayed = True
+        position = replay_positions.setdefault(pair, {"quantity": D("0"), "cost": D("0")})
+        if side == "BUY":
+            position["quantity"] += qty
+            position["cost"] += gross + fee
+            continue
+        held = position["quantity"]
+        if held <= 0:
+            continue
+        sold_qty = min(qty, held)
+        average_cost = position["cost"] / held
+        proceeds = gross - fee
+        realized += proceeds * (sold_qty / qty) - average_cost * sold_qty
+        position["quantity"] = held - sold_qty
+        position["cost"] = average_cost * position["quantity"]
+
+    if replayed:
+        return _quantize(realized, INTERNAL_STEP), "replayed_fills"
+    return _quantize(dec(account.get("realized_pnl", "0"), "realized_pnl"), INTERNAL_STEP), "legacy_account_field"
 
 
 def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict:
