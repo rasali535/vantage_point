@@ -111,7 +111,13 @@ const CandleChart: React.FC<{ candles: Candle[]; trades: TradeMarker[]; position
 };
 
 const PaperTrading: React.FC = () => {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState(() => {
+    try {
+      return window.sessionStorage.getItem('vp-paper-token') || '';
+    } catch {
+      return '';
+    }
+  });
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
@@ -132,6 +138,18 @@ const PaperTrading: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  // Keep the operator's paper access token for this browser tab session so a
+  // page refresh reconnects automatically. sessionStorage is cleared when the
+  // tab session ends; the token is never written to persistent localStorage.
+  useEffect(() => {
+    try {
+      if (token.trim()) window.sessionStorage.setItem('vp-paper-token', token.trim());
+      else window.sessionStorage.removeItem('vp-paper-token');
+    } catch {
+      // Storage can be unavailable in restricted browsing contexts.
+    }
+  }, [token]);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const response = await fetch(`${API_BASE_URL}/api/trading/paper/${path}`, {
@@ -455,8 +473,9 @@ const PaperTrading: React.FC = () => {
         <div className="pb-tokenrow">
           <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" className="pb-input" style={{ flex: 1, minWidth: 220 }} />
           <button className="pb-btn" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
+          <button className="pb-btn pb-btn-ghost" onClick={() => { setToken(''); setAccount(null); setOrders([]); setAutopilot(null); setAutopilotRuns([]); setMessage('Paper Trading disconnected on this tab.'); setError(''); }} disabled={!token.trim()}>Disconnect</button>
         </div>
-        <div className="pb-muted" style={{ marginTop: 8 }}>The token stays in this page's memory and is not saved to browser storage.</div>
+        <div className="pb-muted" style={{ marginTop: 8 }}>Connected access is remembered for this tab and restored automatically after a page refresh. It is cleared when the tab session ends or you disconnect.</div>
       </div>
 
       {error && <div className="pb-alert pb-alert-error" role="alert">{error}</div>}
