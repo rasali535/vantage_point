@@ -501,7 +501,7 @@ const PaperTrading: React.FC = () => {
         <div className="pb-tokenrow">
           <input id="paper-token" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Enter operator-configured token" className="pb-input" style={{ flex: 1, minWidth: 220 }} />
           <button className="pb-btn" onClick={() => void refresh()} disabled={busy || !token.trim()}><RefreshCw size={16} /> Connect</button>
-          <button className="pb-btn pb-btn-ghost" onClick={() => { setToken(''); setAccount(null); setOrders([]); setAutopilot(null); setAutopilotRuns([]); setMessage('Paper Trading disconnected on this tab.'); setError(''); }} disabled={!token.trim()}>Disconnect</button>
+          <button className="pb-btn pb-btn-ghost" onClick={() => { setToken(''); setAccount(null); setOrders([]); setAutopilot(null); setAutopilotRuns([]); setDiagnostics(null); setMessage('Paper Trading disconnected on this tab.'); setError(''); }} disabled={!token.trim()}>Disconnect</button>
         </div>
         <div className="pb-muted" style={{ marginTop: 8 }}>Connected access is remembered for this tab and restored automatically after a page refresh. It is cleared when the tab session ends or you disconnect.</div>
       </div>
@@ -523,7 +523,7 @@ const PaperTrading: React.FC = () => {
             <div className="pb-alert pb-alert-error" style={{ marginTop: 8, marginBottom: 0 }}>Portfolio and persisted account state do not agree. Trading controls must be treated as unverified.</div>
           ) : null}
         </div>
-      ) : null}
+      )}
 
       <div className="pb-hero">
         {stats.map(stat => (
