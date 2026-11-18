@@ -224,7 +224,7 @@ class ExnessReadOnlyClient:
         try:
             async with websockets.connect(
                 ws_url, additional_headers=headers, open_timeout=12, close_timeout=2,
-                ping_interval=20, ping_timeout=20,
+                ping_interval=20, ping_timeout=20, compression=None,
             ) as socket:
                 await socket.send(json.dumps({
                     "id": "vantage-point-initial-ticks",
@@ -273,8 +273,10 @@ class ExnessReadOnlyClient:
             close_code = getattr(exc, "code", None)
             close_reason = getattr(exc, "reason", None)
             logger.warning(
-                "exness_ticks_ws_failed error_type=%s http_status=%s close_code=%s close_reason=%s",
-                type(exc).__name__, status, close_code,
+                "exness_ticks_ws_failed error_type=%s error_detail=%s http_status=%s close_code=%s close_reason=%s",
+                type(exc).__name__,
+                re.sub(r"[^A-Za-z0-9_ .,=:-]", "", str(exc))[:160],
+                status, close_code,
                 str(close_reason)[:120] if close_reason is not None else None,
             )
             if status is not None:
@@ -284,7 +286,8 @@ class ExnessReadOnlyClient:
             elif isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
                 detail = "Exness WebSocket timed out waiting for initial ticks."
             else:
-                detail = f"Exness WebSocket failed ({type(exc).__name__})."
+                safe_detail = re.sub(r"[^A-Za-z0-9_ .,=:-]", "", str(exc))[:120]
+                detail = f"Exness WebSocket failed ({type(exc).__name__}: {safe_detail})."
             raise ExnessAPIError(detail) from exc
         if not ticks:
             raise ExnessAPIError("Exness returned no initial ticks for the requested instruments.")
