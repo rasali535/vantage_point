@@ -209,7 +209,8 @@ def simulate_order(
         avg_entry = dec(position["average_entry"], "average_entry")
         realized = (fill_price - avg_entry) * qty - fee
         updated["cash"] = str(_quantize(now_cash + proceeds, MONEY_STEP))
-        updated["realized_pnl"] = str(_quantize(dec(updated.get("realized_pnl", "0"), "realized_pnl") + realized, MONEY_STEP))
+        prior_realized, _ = realized_pnl_from_orders(updated)
+        updated["realized_pnl"] = str(_quantize(prior_realized + realized, MONEY_STEP))
         remaining = held - qty
         if remaining == 0:
             positions.pop(pair, None)
