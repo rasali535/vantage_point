@@ -15,6 +15,7 @@ from pymongo.errors import DuplicateKeyError
 
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.kraken import KrakenAgent
+from markets.providers.exness_paper import ExnessPaperMarketData
 from agents.orchestrator import TradingOrchestrator
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.whipsaw_protection import whipsaw_protection
@@ -35,7 +36,16 @@ D = Decimal
 QTY_STEP = D("0.00000001")
 _worker_task: asyncio.Task | None = None
 _worker_owner = uuid.uuid4().hex
-_market = KrakenAgent()
+def _build_market_provider():
+    provider = os.getenv("PAPER_MARKET_DATA_PROVIDER", "yahoo").strip().lower()
+    if provider == "exness":
+        return ExnessPaperMarketData()
+    if provider in {"yahoo", "kraken", "global_macro"}:
+        return KrakenAgent()
+    raise RuntimeError("PAPER_MARKET_DATA_PROVIDER must be exness or yahoo.")
+
+
+_market = _build_market_provider()
 _orchestrator = TradingOrchestrator()
 _technical_precheck = TechnicalAnalystAgent()
 
@@ -890,6 +900,16 @@ async def run_autopilot_cycle(db=None) -> dict:
     results = []
     if portfolio_gate.get("approved") or account.get("positions"):
         pairs = configured_pairs()
+        refresh_ticks = getattr(_market, "refresh_ticks", None)
+        if refresh_ticks is not None:
+            try:
+                await refresh_ticks(pairs)
+            except Exception as exc:
+                # Individual get_ticker calls retry a one-symbol snapshot below.
+                logger.warning(
+                    "paper_autopilot_tick_refresh_failed provider=exness error_type=%s",
+                    type(exc).__name__,
+                )
         sem = asyncio.Semaphore(6)
         candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "5"))
 
