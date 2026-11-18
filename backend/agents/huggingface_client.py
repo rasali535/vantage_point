@@ -7,7 +7,7 @@ import os
 import httpx
 
 
-DEFAULT_CHAT_MODEL = "Qwen/Qwen2.5-3B-Instruct"
+DEFAULT_CHAT_MODEL = "Qwen/Qwen3-4B-Thinking-2507:cheapest"
 DEFAULT_CHAT_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
