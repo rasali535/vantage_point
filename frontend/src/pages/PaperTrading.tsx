@@ -96,7 +96,8 @@ const CandleChart: React.FC<{ candles: Candle[]; trades: TradeMarker[]; position
     candles.forEach((c, i) => { const d = Math.abs(c.timestamp - ts); if (d < distance) { best = i; distance = d; } });
     return { x: left + best * step + step / 2, y: y(Number(trade.fill_price)), trade };
   };
-  const visibleTrades = trades.filter(t => t.pair === (position?.pair || trades[0]?.pair)).slice(0, 100);
+  const firstTs = candles[0].timestamp, lastTs = candles[candles.length - 1].timestamp;
+  const visibleTrades = trades.filter(t => { const ts = new Date(t.timestamp).getTime() / 1000; return t.pair === (position?.pair || trades[0]?.pair) && ts >= firstTs && ts <= lastTs; }).slice(0, 100);
   return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Live candlestick chart with paper trade markers" style={{ width: '100%', height: 'auto', display: 'block', background: '#0b1220', borderRadius: 10 }}>
     {[0,1,2,3,4].map(i => { const yy = top + i * plotH / 4; const value = high - i * range / 4; return <g key={i}><line x1={left} x2={width-right} y1={yy} y2={yy} stroke="#253247" strokeDasharray="3 5"/><text x={width-right} y={yy-4} textAnchor="end" fill="#9aa9bd" fontSize="11">{priceFmt(value)}</text></g>; })}
     {position?.stop_loss && <g><line x1={left} x2={width-right} y1={y(Number(position.stop_loss))} y2={y(Number(position.stop_loss))} stroke="#fb7185" strokeDasharray="7 4"/><text x={left+4} y={y(Number(position.stop_loss))-5} fill="#fb7185" fontSize="11">STOP {priceFmt(position.stop_loss)}</text></g>}
@@ -397,7 +398,10 @@ const PaperTrading: React.FC = () => {
             <div className="pb-section-title" style={{ margin: 0 }}>{pair} · Live candles</div>
             <div className="pb-muted">Market feed: {marketSource || 'connecting'} · Refreshes every 15 seconds · Simulated fills are marked on the chart</div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select aria-label="Chart instrument" value={pair} onChange={e => setPair(e.target.value)} className="pb-select" style={{ width: 150, margin: 0 }}>
+              {ALL_TRADING_PAIRS.map(symbol => <option key={symbol} value={symbol}>{symbol}</option>)}
+            </select>
             {[1,5,15,30,60].map(value => <button key={value} type="button" className={candleInterval === value ? 'pb-btn' : 'pb-btn pb-btn-ghost'} onClick={() => setCandleInterval(value)}>{value}m</button>)}
           </div>
         </div>
