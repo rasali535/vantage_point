@@ -1226,9 +1226,20 @@ async def poll_meta_trader_orders(x_webhook_token: str | None = Header(default=N
     db = await get_database()
     setting = await db.broker_settings.find_one({"_id": "active_broker"}) or {}
     expected = setting.get("webhook_token")
-    if expected and x_webhook_token != expected:
+    if not expected or x_webhook_token != expected:
         raise HTTPException(status_code=401, detail="Invalid webhook token.")
-    
+
+    # Never release queued signals unless this exact broker is explicitly
+    # configured for live orders. Paper mode and connected-but-disabled brokers
+    # must remain unable to reach the MetaTrader EA.
+    if setting.get("mode") != "meta_trader" or setting.get("live_orders_enabled") is not True:
+        return {
+            "status": "idle",
+            "orders": [],
+            "server_time": datetime.now(timezone.utc).isoformat(),
+            "message": "Live broker execution is not explicitly enabled.",
+        }
+
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.broker_settings.update_one(
         {"_id": "active_broker"},
