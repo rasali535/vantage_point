@@ -344,7 +344,7 @@ const App: React.FC = () => {
 
       <div className="mf-container">
         {/* ===================================================================
-            TOP HEADER BAR (CLAUDE FABLE 5 · MIROFISH INSPIRED HEADER CARD)
+            TOP HEADER BAR (VANTAGE POINT TERMINAL HEADER)
             =================================================================== */}
         <header className="mf-card mf-topbar">
           <div className="mf-brand-left" onClick={() => setActiveTab('terminal')} style={{ cursor: 'pointer' }}>
