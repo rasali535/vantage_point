@@ -535,11 +535,11 @@ async def get_paper_account(x_paper_token: str | None = Header(default=None)):
 
 
 @router.get("/paper/orders")
-async def get_paper_orders(x_paper_token: str | None = Header(default=None)):
+async def get_paper_orders(x_paper_token: str | None = Header(default=None), limit: int = 10000):
     _require_paper_access(x_paper_token)
     db = await get_database()
     account = await _get_or_create_paper_account(db)
-    return list(reversed(account.get("orders", [])[-100:]))
+    return list(reversed(account.get("orders", [])[-max(1, min(limit, 10000)):]))
 
 
 @router.post("/paper/orders")
