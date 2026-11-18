@@ -61,6 +61,10 @@ Set secrets in Vercel project environment settings, not in source files.
 | `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |
 | `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |
 | `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; no longer controls Hugging Face advisory calls. |
+Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until credentials have been rotated.
+
+## Database and runtime
+
 The backend uses the native PyMongo asynchronous client, reused within the ASGI process with a small per-instance connection pool suited to serverless workloads. If MongoDB is not configured or is unavailable, stateful routes return HTTP 503. They do not silently switch to mock balances, mock market data, or fabricated ledger entries.
 
 The default database name remains `action_pilot` to preserve the existing collection namespace. The trading routes use the existing `trading_ledger`, `boardroom_history`, and `audit_logs` collections.
