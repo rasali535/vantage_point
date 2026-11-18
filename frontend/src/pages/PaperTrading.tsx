@@ -77,14 +77,40 @@ const priceFmt = (value: string | number) => {
   return new Intl.NumberFormat('en-US', { minimumFractionDigits: 5, maximumFractionDigits: 5 }).format(num);
 };
 
+
+type Candle = { timestamp: number; open: number; high: number; low: number; close: number };
+type TradeMarker = { timestamp: string; side: string; fill_price: string; pair: string; event_type?: string; triggered_by?: string };
+const CandleChart: React.FC<{ candles: Candle[]; trades: TradeMarker[]; position?: Position; currentPrice?: number }> = ({ candles, trades, position, currentPrice }) => {
+  if (!candles.length) return <div className="pb-muted" style={{ padding: 28, textAlign: 'center' }}>Waiting for market candles…</div>;
+  const width = 1100, height = 360, left = 18, right = 18, top = 18, bottom = 34;
+  const plotW = width - left - right, plotH = height - top - bottom;
+  const prices = candles.flatMap(c => [c.high, c.low]).filter(Number.isFinite);
+  const levels = [...prices, ...(position ? [Number(position.stop_loss), Number(position.take_profit)] : []), ...(currentPrice ? [currentPrice] : [])].filter(v => Number.isFinite(v) && v > 0);
+  const min = Math.min(...levels), max = Math.max(...levels), pad = Math.max((max - min) * 0.08, max * 0.0002);
+  const low = min - pad, high = max + pad, range = high - low || 1;
+  const y = (price: number) => top + ((high - price) / range) * plotH;
+  const step = plotW / candles.length, bodyW = Math.max(3, Math.min(12, step * 0.62));
+  const markerFor = (trade: TradeMarker) => {
+    const ts = new Date(trade.timestamp).getTime() / 1000;
+    let best = 0, distance = Infinity;
+    candles.forEach((c, i) => { const d = Math.abs(c.timestamp - ts); if (d < distance) { best = i; distance = d; } });
+    return { x: left + best * step + step / 2, y: y(Number(trade.fill_price)), trade };
+  };
+  const visibleTrades = trades.filter(t => t.pair === (position?.pair || trades[0]?.pair)).slice(0, 100);
+  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Live candlestick chart with paper trade markers" style={{ width: '100%', height: 'auto', display: 'block', background: '#0b1220', borderRadius: 10 }}>
+    {[0,1,2,3,4].map(i => { const yy = top + i * plotH / 4; const value = high - i * range / 4; return <g key={i}><line x1={left} x2={width-right} y1={yy} y2={yy} stroke="#253247" strokeDasharray="3 5"/><text x={width-right} y={yy-4} textAnchor="end" fill="#9aa9bd" fontSize="11">{priceFmt(value)}</text></g>; })}
+    {position?.stop_loss && <g><line x1={left} x2={width-right} y1={y(Number(position.stop_loss))} y2={y(Number(position.stop_loss))} stroke="#fb7185" strokeDasharray="7 4"/><text x={left+4} y={y(Number(position.stop_loss))-5} fill="#fb7185" fontSize="11">STOP {priceFmt(position.stop_loss)}</text></g>}
+    {position?.take_profit && <g><line x1={left} x2={width-right} y1={y(Number(position.take_profit))} y2={y(Number(position.take_profit))} stroke="#34d399" strokeDasharray="7 4"/><text x={left+4} y={y(Number(position.take_profit))-5} fill="#34d399" fontSize="11">TARGET {priceFmt(position.take_profit)}</text></g>}
+    {candles.map((c,i) => { const x = left + i*step + step/2; const up = c.close >= c.open; const color = up ? '#22c58b' : '#fb7185'; const bodyY = Math.min(y(c.open), y(c.close)); const bodyH = Math.max(1.5, Math.abs(y(c.open)-y(c.close))); return <g key={c.timestamp}><line x1={x} x2={x} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth="1.4"/><rect x={x-bodyW/2} y={bodyY} width={bodyW} height={bodyH} fill={color} rx="1"/></g>; })}
+    {currentPrice && <g><line x1={left} x2={width-right} y1={y(currentPrice)} y2={y(currentPrice)} stroke="#60a5fa" strokeDasharray="4 4"/><text x={left+4} y={y(currentPrice)-6} fill="#60a5fa" fontSize="11">MARK {priceFmt(currentPrice)}</text></g>}
+    {visibleTrades.map((t,i) => { const p = markerFor(t); const buy = t.side === 'BUY'; return <g key={`${t.timestamp}-${i}`}><circle cx={p.x} cy={p.y} r="7" fill={buy ? '#2563eb' : '#dc2626'} stroke="#fff" strokeWidth="1.5"/><text x={p.x} y={p.y-11} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">{buy ? 'B' : 'S'} {priceFmt(t.fill_price)}</text></g>; })}
+    <text x={left} y={height-8} fill="#9aa9bd" fontSize="11">{new Date(candles[0].timestamp*1000).toLocaleString()}</text>
+    <text x={width-right} y={height-8} textAnchor="end" fill="#9aa9bd" fontSize="11">{new Date(candles[candles.length-1].timestamp*1000).toLocaleString()}</text>
+  </svg>;
+};
+
 const PaperTrading: React.FC = () => {
-  const [token, setToken] = useState(() => {
-    try {
-      return localStorage.getItem('paper_trading_token') || '';
-    } catch {
-      return '';
-    }
-  });
+  const [token, setToken] = useState('');
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
@@ -92,6 +118,11 @@ const PaperTrading: React.FC = () => {
   const [latestAnalysis, setLatestAnalysis] = useState<LatestAnalysis | null>(null);
   const [utcNow, setUtcNow] = useState('');
   const [pair, setPair] = useState('EUR/USD');
+  const [candleInterval, setCandleInterval] = useState(5);
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [marketPrice, setMarketPrice] = useState<number | undefined>();
+  const [marketSource, setMarketSource] = useState('');
+  const [marketError, setMarketError] = useState('');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('10');
   const [stopLoss, setStopLoss] = useState('');
@@ -154,11 +185,6 @@ const PaperTrading: React.FC = () => {
       setOrders(Array.isArray(history) ? history : []);
       setAutopilot(autoStatus);
       setAutopilotRuns(Array.isArray(autoRuns) ? autoRuns : []);
-      try {
-        localStorage.setItem('paper_trading_token', token);
-      } catch {
-        // Private browsing: the token simply won't persist.
-      }
       if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
     } catch (err: any) {
       setError(err.message || 'Unable to load the paper account.');
@@ -177,6 +203,28 @@ const PaperTrading: React.FC = () => {
     if (token.trim()) void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadCandles = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/trading/market-overview?pair=${encodeURIComponent(pair)}&interval=${candleInterval}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Market data returned ${response.status}`);
+        if (active) {
+          setCandles(Array.isArray(data.candles) ? data.candles : []);
+          setMarketPrice(Number(data.ticker?.last) || undefined);
+          setMarketSource(String(data.ticker?.source || 'market feed'));
+          setMarketError('');
+        }
+      } catch (err: any) {
+        if (active) setMarketError(err.message || 'Market candles are temporarily unavailable.');
+      }
+    };
+    void loadCandles();
+    const poll = window.setInterval(() => { void loadCandles(); }, 15000);
+    return () => { active = false; window.clearInterval(poll); };
+  }, [pair, candleInterval]);
 
   useEffect(() => {
     const tick = () => setUtcNow(`${new Date().toISOString().slice(11, 19)} UTC`);
@@ -341,6 +389,23 @@ const PaperTrading: React.FC = () => {
             <div className="s">{stat.sub}</div>
           </div>
         ))}
+      </div>
+
+      <div className="pb-panel" style={{ marginTop: 12, marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <div>
+            <div className="pb-section-title" style={{ margin: 0 }}>{pair} · Live candles</div>
+            <div className="pb-muted">Market feed: {marketSource || 'connecting'} · Refreshes every 15 seconds · Simulated fills are marked on the chart</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[1,5,15,30,60].map(value => <button key={value} type="button" className={candleInterval === value ? 'pb-btn' : 'pb-btn pb-btn-ghost'} onClick={() => setCandleInterval(value)}>{value}m</button>)}
+          </div>
+        </div>
+        {marketError && <div className="pb-alert pb-alert-error" role="alert">{marketError}</div>}
+        <CandleChart candles={candles} trades={orders.filter((o: any) => o.pair === pair)} position={account?.positions.find(p => p.pair === pair)} currentPrice={marketPrice} />
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10 }} className="pb-muted">
+          <span>🟢 Bullish candle</span><span>🔴 Bearish candle</span><span>🔵 BUY fill</span><span>🔴 SELL fill</span><span>Dashed lines = open-position stop / target</span>
+        </div>
       </div>
 
       <div className="pb-taperow">
