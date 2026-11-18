@@ -55,12 +55,12 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `10` seconds |
 | `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum deterministic signal confidence; defaults to `0.62` |
 | `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Primary candle interval in minutes; defaults to `5` |
-| `HF_TOKEN` | Server-side Hugging Face token with inference permission; never expose it to the browser. |\n| `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen2.5-3B-Instruct`. |\n| `HF_CHAT_COMPLETIONS_URL` | Hugging Face Router OpenAI-compatible endpoint. |\n| `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |\n| `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |\n| `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; no longer controls Hugging Face advisory calls. |
-
-Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
-
-## Database and runtime
-
+| `HF_TOKEN` | Server-side Hugging Face token with inference permission; never expose it to the browser. |
+| `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen2.5-3B-Instruct`. |
+| `HF_CHAT_COMPLETIONS_URL` | Hugging Face Router OpenAI-compatible endpoint. |
+| `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |
+| `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |
+| `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; no longer controls Hugging Face advisory calls. |
 The backend uses the native PyMongo asynchronous client, reused within the ASGI process with a small per-instance connection pool suited to serverless workloads. If MongoDB is not configured or is unavailable, stateful routes return HTTP 503. They do not silently switch to mock balances, mock market data, or fabricated ledger entries.
 
 The default database name remains `action_pilot` to preserve the existing collection namespace. The trading routes use the existing `trading_ledger`, `boardroom_history`, and `audit_logs` collections.
