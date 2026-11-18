@@ -206,7 +206,7 @@ async def get_models_readiness():
         "provider": "huggingface" if huggingface_client.configured else "not_configured",
         "chat_model": huggingface_client.model,
         "chat_configured": huggingface_client.configured,
-        "strategy_advisory_enabled": os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "true").lower() == "true",
+        "strategy_advisory_enabled": os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "false").lower() == "true",
         "decision_engine": "deterministic",
         "risk_engine": "deterministic_and_authoritative",
         "execution_mode": "paper_only",
