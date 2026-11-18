@@ -33,7 +33,7 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _base_url(value: str, *, allow_gateway_host: bool = False) -> str:
+def _base_url(value: str) -> str:
     parsed = urlsplit(value)
     if (
         parsed.scheme != "https"
@@ -44,10 +44,12 @@ def _base_url(value: str, *, allow_gateway_host: bool = False) -> str:
         or parsed.query
         or parsed.fragment
     ):
-        raise ExnessConfigurationError("Exness hosts must be HTTPS origins without credentials, paths, queries or fragments.")
-    hostname = (parsed.hostname or "").lower()
-    if not (hostname == "exness.com" or hostname.endswith(".exness.com")):
-        raise ExnessConfigurationError("Exness API host is not within the official exness.com domain.")
+        raise ExnessConfigurationError(
+            "Exness hosts must be HTTPS origins without credentials, paths, queries or fragments."
+        )
+    # Exness documents the Gateway and account Access Point as values supplied
+    # by Key Management / discovery, not as fixed hostnames. Do not hardcode
+    # example domains; redirects are disabled before any signed request.
     return f"https://{parsed.netloc}"
 
 
@@ -59,7 +61,9 @@ def _load_private_key(value: str) -> Ed25519PrivateKey:
             raise ExnessConfigurationError("EXN_PRIVATE_KEY must be an Ed25519 private key.")
         return key
     if not re.fullmatch(r"[0-9a-fA-F]{128}", text):
-        raise ExnessConfigurationError("EXN_PRIVATE_KEY must be 128 hex characters or an unencrypted PKCS#8 PEM key.")
+        raise ExnessConfigurationError(
+            "EXN_PRIVATE_KEY must be 128 hex characters or an unencrypted PKCS#8 PEM key."
+        )
     raw = bytes.fromhex(text)
     key = Ed25519PrivateKey.from_private_bytes(raw[:32])
     public = key.public_key().public_bytes(
@@ -124,7 +128,6 @@ class ExnessReadOnlyClient:
         if response.is_redirect:
             raise ExnessAPIError("Exness returned a redirect; signed credentials were not forwarded.")
         if response.status_code >= 400:
-            # Do not include response bodies: they may contain account or request details.
             raise ExnessAPIError(f"Exness API returned HTTP {response.status_code}.")
         try:
             data = response.json()
