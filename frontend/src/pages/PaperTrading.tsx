@@ -52,6 +52,19 @@ type Account = {
   exchange_order_submitted: boolean;
 };
 
+type PaperDiagnostics = {
+  database_name: string;
+  account_exists: boolean;
+  account_version: number;
+  fill_count: number;
+  open_position_count: number;
+  autopilot_enabled: boolean;
+  execution_mode: string;
+  execution_enabled: boolean;
+  exchange_order_submitted: boolean;
+  server_time: string;
+};
+
 type LatestAnalysis = {
   pair: string;
   action: string;
@@ -122,6 +135,7 @@ const PaperTrading: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [autopilot, setAutopilot] = useState<AutopilotStatus | null>(null);
   const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRun[]>([]);
+  const [diagnostics, setDiagnostics] = useState<PaperDiagnostics | null>(null);
   const [latestAnalysis, setLatestAnalysis] = useState<LatestAnalysis | null>(null);
   const [utcNow, setUtcNow] = useState('');
   const [pair, setPair] = useState('EUR/USD');
@@ -189,24 +203,38 @@ const PaperTrading: React.FC = () => {
       setLatestAnalysis(null);
     }
     if (!token.trim()) {
+      setAccount(null);
+      setOrders([]);
+      setAutopilot(null);
+      setAutopilotRuns([]);
+      setDiagnostics(null);
       if (!silent) setError('Enter the paper-trading access token configured by the operator.');
       return;
     }
     if (!silent) setBusy(true);
     setError('');
     try {
-      const [summary, history, autoStatus, autoRuns] = await Promise.all([
+      const [summary, history, autoStatus, autoRuns, storage] = await Promise.all([
         request('account'),
         request('orders?limit=10000'),
         request('autopilot'),
         request('autopilot/runs'),
+        request('diagnostics'),
       ]);
       setAccount(summary);
       setOrders(Array.isArray(history) ? history : []);
       setAutopilot(autoStatus);
       setAutopilotRuns(Array.isArray(autoRuns) ? autoRuns : []);
-      if (!silent) setMessage('Paper account and autonomous trading status refreshed from MongoDB.');
+      setDiagnostics(storage);
+      if (!silent) setMessage('Paper account and autonomous trading status refreshed from the authoritative MongoDB store.');
     } catch (err: any) {
+      // Never leave a previous portfolio visible when the current authoritative
+      // account refresh fails; stale balances and fills can look like live state.
+      setAccount(null);
+      setOrders([]);
+      setAutopilot(null);
+      setAutopilotRuns([]);
+      setDiagnostics(null);
       setError(err.message || 'Unable to load the paper account.');
     } finally {
       if (!silent) setBusy(false);
@@ -480,6 +508,22 @@ const PaperTrading: React.FC = () => {
 
       {error && <div className="pb-alert pb-alert-error" role="alert">{error}</div>}
       {message && <div className="pb-alert pb-alert-ok" role="status">{message}</div>}
+
+      {diagnostics && (
+        <div className="pb-panel" style={{ marginTop: 12, marginBottom: 12 }}>
+          <div className="pb-mini">Authoritative paper-store verification</div>
+          <div className="pb-muted">
+            Database: <strong>{diagnostics.database_name}</strong> · Account version: <strong>{diagnostics.account_version}</strong> ·
+            Persisted fills: <strong>{diagnostics.fill_count}</strong> · Persisted open positions: <strong>{diagnostics.open_position_count}</strong> ·
+            Autopilot: <strong>{diagnostics.autopilot_enabled ? 'ENABLED' : 'DISABLED'}</strong> ·
+            Execution: <strong>{diagnostics.execution_enabled ? 'ENABLED' : 'LOCKED'}</strong> ·
+            Broker orders submitted: <strong>{diagnostics.exchange_order_submitted ? 'YES' : 'NO'}</strong>
+          </div>
+          {diagnostics.fill_count !== orders.length || diagnostics.open_position_count !== (account?.positions.length || 0) || diagnostics.autopilot_enabled !== Boolean(autopilot?.enabled) ? (
+            <div className="pb-alert pb-alert-error" style={{ marginTop: 8, marginBottom: 0 }}>Portfolio and persisted account state do not agree. Trading controls must be treated as unverified.</div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="pb-hero">
         {stats.map(stat => (
