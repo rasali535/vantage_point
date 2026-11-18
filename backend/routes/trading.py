@@ -198,16 +198,19 @@ async def get_market_overview(pair: str = "XAU/USD", interval: int = 5):
     }
 
 
-@router.get("/meta/readiness")
-async def get_meta_readiness():
-    """Compatibility endpoint: external Meta inference has been retired."""
+@router.get("/models/readiness")
+async def get_models_readiness():
+    """Report configured research model and authoritative deterministic controls."""
+    from agents.huggingface_client import huggingface_client
     return {
-        "status": "disabled",
-        "configured": False,
-        "provider": "deterministic",
-        "detail": "External Meta inference is disabled. Deterministic analysis agents are active.",
+        "provider": "huggingface" if huggingface_client.configured else "not_configured",
+        "chat_model": huggingface_client.model,
+        "chat_configured": huggingface_client.configured,
+        "strategy_advisory_enabled": os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "true").lower() == "true",
+        "decision_engine": "deterministic",
+        "risk_engine": "deterministic_and_authoritative",
+        "execution_mode": "paper_only",
     }
-
 
 @router.get("/ledger")
 async def get_ledger():
