@@ -124,6 +124,7 @@ const PaperTrading: React.FC = () => {
   const [marketPrice, setMarketPrice] = useState<number | undefined>();
   const [marketSource, setMarketSource] = useState('');
   const [marketError, setMarketError] = useState('');
+  const [marketFeedStatus, setMarketFeedStatus] = useState('connecting');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('10');
   const [stopLoss, setStopLoss] = useState('');
@@ -207,6 +208,10 @@ const PaperTrading: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+    let socket: WebSocket | undefined;
+    let poll: number | undefined;
+    let reconnectTimer: number | undefined;
+    const isKrakenSpot = CRYPTO_PAIRS.includes(pair);
     const loadCandles = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/trading/market-overview?pair=${encodeURIComponent(pair)}&interval=${candleInterval}`);
@@ -217,14 +222,90 @@ const PaperTrading: React.FC = () => {
           setMarketPrice(Number(data.ticker?.last) || undefined);
           setMarketSource(String(data.ticker?.source || 'market feed'));
           setMarketError('');
+          setMarketFeedStatus(isKrakenSpot ? 'connecting to Kraken stream' : 'snapshot feed · not streaming');
         }
       } catch (err: any) {
-        if (active) setMarketError(err.message || 'Market candles are temporarily unavailable.');
+        if (active) {
+          setMarketError(err.message || 'Market candles are temporarily unavailable.');
+          setMarketFeedStatus('feed unavailable');
+        }
       }
     };
     void loadCandles();
-    const poll = window.setInterval(() => { void loadCandles(); }, 15000);
-    return () => { active = false; window.clearInterval(poll); };
+
+    if (isKrakenSpot) {
+      const connectKraken = () => {
+        if (!active) return;
+        setMarketFeedStatus('connecting to Kraken stream');
+        socket = new WebSocket('wss://ws.kraken.com/v2');
+        socket.onopen = () => {
+          if (!active || !socket || socket.readyState !== WebSocket.OPEN) return;
+          socket.send(JSON.stringify({
+            method: 'subscribe',
+            params: { channel: 'ohlc', symbol: [pair], interval: candleInterval, snapshot: true },
+          }));
+        };
+        socket.onmessage = (event) => {
+          if (!active) return;
+          try {
+            const message = JSON.parse(String(event.data));
+            if (message.method === 'subscribe') {
+              if (message.success === false) {
+                setMarketFeedStatus('Kraken subscription rejected');
+                setMarketError(message.error || 'Kraken rejected the candle subscription.');
+              } else if (message.result?.channel === 'ohlc') {
+                setMarketFeedStatus('connected · waiting for trades');
+                setMarketError('');
+              }
+              return;
+            }
+            if (message.channel !== 'ohlc' || !Array.isArray(message.data)) return;
+            const updates = message.data
+              .filter((item: any) => item.symbol === pair)
+              .map((item: any) => ({
+                timestamp: Math.floor(Date.parse(item.interval_begin) / 1000),
+                open: Number(item.open),
+                high: Number(item.high),
+                low: Number(item.low),
+                close: Number(item.close),
+                volume: Number(item.volume || 0),
+              }))
+              .filter((item: Candle) => Number.isFinite(item.timestamp) && [item.open, item.high, item.low, item.close].every(value => Number.isFinite(value) && value > 0));
+            if (!updates.length) return;
+            setCandles(previous => {
+              const byTime = new Map(previous.map(candle => [candle.timestamp, candle]));
+              updates.forEach(candle => byTime.set(candle.timestamp, candle));
+              return Array.from(byTime.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-60);
+            });
+            const latest = updates[updates.length - 1];
+            setMarketPrice(latest.close);
+            setMarketSource('Kraken Spot WebSocket v2');
+            setMarketFeedStatus('streaming · Kraken');
+            setMarketError('');
+          } catch {
+            setMarketFeedStatus('stream message error');
+          }
+        };
+        socket.onerror = () => {
+          if (active) setMarketFeedStatus('Kraken stream error');
+        };
+        socket.onclose = () => {
+          if (!active) return;
+          setMarketFeedStatus('Kraken disconnected · reconnecting');
+          reconnectTimer = window.setTimeout(connectKraken, 3000);
+        };
+      };
+      connectKraken();
+    } else {
+      poll = window.setInterval(() => { void loadCandles(); }, 15000);
+    }
+
+    return () => {
+      active = false;
+      if (poll !== undefined) window.clearInterval(poll);
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      if (socket && socket.readyState <= WebSocket.OPEN) socket.close();
+    };
   }, [pair, candleInterval]);
 
   useEffect(() => {
@@ -396,7 +477,7 @@ const PaperTrading: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <div>
             <div className="pb-section-title" style={{ margin: 0 }}>{pair} · Live candles</div>
-            <div className="pb-muted">Market feed: {marketSource || 'connecting'} · Refreshes every 15 seconds · Simulated fills are marked on the chart</div>
+            <div className="pb-muted">Market feed: {marketSource || 'connecting'} · {marketFeedStatus} · {CRYPTO_PAIRS.includes(pair) ? 'Kraken trade updates form the active candle' : 'This instrument currently uses periodic market snapshots, not a live stream'} · Simulated fills are marked on the chart</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <select aria-label="Chart instrument" value={pair} onChange={e => setPair(e.target.value)} className="pb-select" style={{ width: 150, margin: 0 }}>
