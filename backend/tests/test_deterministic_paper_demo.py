@@ -85,7 +85,7 @@ class PaperAutopilotSizingRegressionTests(unittest.IsolatedAsyncioTestCase):
             drawdown_pct=Decimal("0"), open_positions=0, leverage=Decimal("1"),
         )
         policy = RiskPolicy(
-            max_trade_risk_pct=Decimal("2"),
+            max_trade_risk_pct=Decimal("1"),
             max_daily_loss_pct=Decimal("6"),
             max_drawdown_pct=Decimal("12"),
             max_open_positions=6,
@@ -118,6 +118,8 @@ class PaperAutopilotSizingRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(Decimal(saved_position["stop_loss"]), Decimal(result["fill"]["fill_price"]))
         self.assertEqual(result["fill"]["execution_mode"], "paper")
         self.assertFalse(result["fill"]["exchange_order_submitted"])
+        stop_risk = Decimal(saved_position["quantity"]) * (Decimal(result["fill"]["fill_price"]) - Decimal(saved_position["stop_loss"]))
+        self.assertLessEqual(stop_risk, Decimal("1.01"), "high-confidence sizing must stay within the $1 risk budget on a $100 account")
 
 
 if __name__ == "__main__":
