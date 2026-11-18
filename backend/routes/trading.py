@@ -541,7 +541,7 @@ async def get_paper_diagnostics(x_paper_token: str | None = Header(default=None)
     db = await get_database()
     account = await db.paper_accounts.find_one({"_id": "default"}, {
         "version": 1, "cash": 1, "positions": 1, "orders": 1,
-        "execution_enabled": 1,
+        "execution_enabled": 1, "initial_equity": 1, "realized_pnl": 1,
     })
     runtime = await db.paper_runtime.find_one({"_id": "autopilot"}, {
         "enabled": 1, "mode": 1, "exchange_order_submitted": 1,
@@ -554,6 +554,11 @@ async def get_paper_diagnostics(x_paper_token: str | None = Header(default=None)
         "account_version": int((account or {}).get("version", 0)),
         "fill_count": len(orders),
         "open_position_count": len(positions),
+        "realized_pnl": account_summary(account).get("realized_pnl") if account else "0.00",
+        "stored_realized_pnl": (account or {}).get("realized_pnl", "0"),
+        "realized_pnl_discrepancy": account_summary(account).get("realized_pnl_discrepancy") if account else "0.00",
+        "pnl_reconciliation_status": account_summary(account).get("pnl_reconciliation_status") if account else "consistent",
+        "equity_pnl_delta": account_summary(account).get("equity_pnl_delta") if account else "0.00",
         "autopilot_enabled": runtime.get("enabled") is True,
         "execution_mode": runtime.get("mode", "paper"),
         "execution_enabled": (account or {}).get("execution_enabled") is True,
