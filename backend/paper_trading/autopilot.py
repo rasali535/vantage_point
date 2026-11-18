@@ -658,7 +658,7 @@ async def _execute_signal(
     # confirmed 1m/5m scalp signal, fall back to deterministic scalping
     # parameters while keeping the DeterministicRiskEngine authoritative.
     cycle = None
-    if os.getenv("PAPER_AUTOTRADING_USE_LLM", "true").lower() == "true":
+    if os.getenv("PAPER_AUTOTRADING_USE_LLM", "false").lower() == "true":
         try:
             cycle = await asyncio.wait_for(
                 _orchestrator.run(
@@ -726,6 +726,8 @@ async def _execute_signal(
         # Strong conviction (70% - 79%): 18% to 22% lot allocation (standard multiplier 1.0x)
         # Moderate conviction (58% - 69%): 12% to 15% lot allocation (exploratory multiplier 0.75x)
         conf_float = float(confidence)
+        # Calculate the stop distance before deriving a target from it.
+        stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         if conf_float >= 0.80:
             conviction_pct = D("32")
             risk_multiplier = D("1.35")
@@ -741,8 +743,6 @@ async def _execute_signal(
             risk_multiplier = D("0.75")
             conviction_tier = "MODERATE_CONVICTION"
             target_distance = max(stop_distance * D("1.3"), entry_estimate * D("0.0035"))
-
-        stop_distance = max(D(str(atr_val)) * D("1.2"), entry_estimate * D("0.0020"))
         stop = entry_estimate - stop_distance
         target = entry_estimate + target_distance
         policy = _active_risk_policy()
