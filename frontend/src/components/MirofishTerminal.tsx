@@ -705,7 +705,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
           <div className="mf-hero-left">
             <div className="mf-eyebrow-row">
               <span className="mf-dot mf-dot-green" />
-              <span className="mf-eyebrow-text">MUSE SPARK 1.3 · {inferCategory(pair)} TELEMETRY</span>
+              <span className="mf-eyebrow-text">OPTIONAL HUGGING FACE QWEN RESEARCH · {inferCategory(pair)} TELEMETRY</span>
               <span className="mf-tag-outline">{pair} · {timeframe === 60 ? '1H' : `${timeframe}M SCALP`}</span>
               <span className="mf-tag-outline">● {inferCategory(pair)}</span>
               <span className="mf-tag-outline" style={{ color: '#9a3412', borderColor: '#fed7aa', background: '#fff7ed' }}>⚡ 1M/5M SCALPER</span>
@@ -1824,7 +1824,7 @@ const MirofishTerminal: React.FC<MirofishTerminalProps> = ({
             </button>
             <div className="mf-terra-floating-pill">
               <span className="mf-dot mf-dot-amber" />
-              MUSE SPARK 1.3 · SIX-AGENT CORE
+              OPTIONAL HUGGING FACE QWEN RESEARCH · SIX-AGENT CORE
             </div>
           </div>
         </div>
