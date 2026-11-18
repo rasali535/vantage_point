@@ -907,8 +907,8 @@ async def run_autopilot_cycle(db=None) -> dict:
             except Exception as exc:
                 # Individual get_ticker calls retry a one-symbol snapshot below.
                 logger.warning(
-                    "paper_autopilot_tick_refresh_failed provider=exness error_type=%s",
-                    type(exc).__name__,
+                    "paper_autopilot_tick_refresh_failed provider=exness error_type=%s reason=%s",
+                    type(exc).__name__, str(exc)[:240],
                 )
         sem = asyncio.Semaphore(6)
         candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "5"))
