@@ -70,12 +70,21 @@ def _active_risk_policy() -> RiskPolicy:
     """Return configured operator RiskPolicy from environment, with safe defaults for autonomous paper trading."""
     policy = RiskPolicy.from_env()
     if policy is not None:
-        return policy
+        # The $100 paper-account policy is deliberately stricter than any
+        # environment setting: configuration may tighten, never loosen it.
+        return RiskPolicy(
+            max_trade_risk_pct=policy.max_trade_risk_pct,
+            max_daily_loss_pct=policy.max_daily_loss_pct,
+            max_drawdown_pct=policy.max_drawdown_pct,
+            max_open_positions=min(3, policy.max_open_positions),
+            max_leverage=policy.max_leverage,
+            require_stop_loss=policy.require_stop_loss,
+        )
     return RiskPolicy(
         max_trade_risk_pct=Decimal(os.getenv("RISK_MAX_TRADE_RISK_PCT", "2.0")),
         max_daily_loss_pct=Decimal(os.getenv("RISK_MAX_DAILY_LOSS_PCT", "6.0")),
         max_drawdown_pct=Decimal(os.getenv("RISK_MAX_DRAWDOWN_PCT", "12.0")),
-        max_open_positions=int(os.getenv("RISK_MAX_OPEN_POSITIONS", "6")),
+        max_open_positions=min(3, max(1, int(os.getenv("RISK_MAX_OPEN_POSITIONS", "3")))),
         max_leverage=Decimal(os.getenv("RISK_MAX_LEVERAGE", "1.0")),
         require_stop_loss=os.getenv("RISK_REQUIRE_STOP_LOSS", "true").lower() == "true",
     )
@@ -490,6 +499,20 @@ def _portfolio_snapshot(account: dict, prices: dict[str, Decimal]) -> PortfolioR
     )
 
 
+def _portfolio_exposure_usd(account: dict, prices: dict[str, Decimal]) -> Decimal:
+    """Mark gross long exposure, falling back to entry price if a quote is absent."""
+    exposure = D("0")
+    for pair, position in account.get("positions", {}).items():
+        quantity = D(str(position.get("quantity", "0")))
+        mark = prices.get(pair)
+        if mark is None:
+            mark = D(str(position.get("average_entry", "0")))
+        if not quantity.is_finite() or not mark.is_finite() or quantity < 0 or mark <= 0:
+            raise PaperTradeError("Cannot calculate portfolio exposure from invalid position data.")
+        exposure += quantity * mark
+    return exposure
+
+
 def _ema_series(values: list[float], period: int) -> float | None:
     if not values:
         return None
@@ -770,6 +793,32 @@ async def _execute_signal(
         stop = entry_estimate - stop_distance
         target = entry_estimate + target_distance
         policy = _active_risk_policy()
+        max_open_positions = min(3, max(1, int(os.getenv("PAPER_AUTOTRADING_MAX_OPEN_POSITIONS", "3"))))
+        if portfolio.open_positions >= max_open_positions:
+            return {
+                "pair": pair,
+                "decision": "HOLD",
+                "reason": f"Portfolio position limit reached ({max_open_positions}); manage existing positions before adding risk.",
+            }
+        try:
+            configured_exposure_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_GROSS_EXPOSURE_PCT", "60"))
+        except Exception:
+            return {"pair": pair, "decision": "HOLD", "reason": "Portfolio exposure limit is invalid; entry blocked."}
+        if not configured_exposure_pct.is_finite() or configured_exposure_pct <= 0:
+            return {"pair": pair, "decision": "HOLD", "reason": "Portfolio exposure limit must be positive; entry blocked."}
+        max_gross_exposure_pct = min(D("60"), configured_exposure_pct)
+        current_exposure = _portfolio_exposure_usd(account, portfolio_prices)
+        exposure_headroom = (
+            portfolio.equity * max_gross_exposure_pct / D("100") - current_exposure
+        )
+        if exposure_headroom < D("5"):
+            return {
+                "pair": pair,
+                "decision": "HOLD",
+                "reason": "Portfolio gross-exposure cap reached; preserving at least 40% cash rather than forcing another entry.",
+                "gross_exposure_usd": str(current_exposure),
+                "max_gross_exposure_pct": str(max_gross_exposure_pct),
+            }
         # The operator-facing contract is a hard 20% maximum per new pair.
         # An environment override may tighten this limit, but can never raise it.
         configured_max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "20"))
@@ -779,6 +828,7 @@ async def _execute_signal(
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
+            exposure_headroom,
         )
         if allocatable_cash < D("5"):
             return {"pair": pair, "decision": "HOLD", "reason": "Available cash or position allocation budget is below $5 minimum."}
@@ -1133,4 +1183,10 @@ async def autopilot_status(db) -> dict:
         "pairs": configured_pairs(),
         "execution_mode": "paper",
         "live_execution_enabled": False,
+        "risk_limits": {
+            "max_open_positions": min(3, max(1, int(os.getenv("PAPER_AUTOTRADING_MAX_OPEN_POSITIONS", "3")))),
+            "max_gross_exposure_pct": str(min(D("60"), D(os.getenv("PAPER_AUTOTRADING_MAX_GROSS_EXPOSURE_PCT", "60")))),
+            "min_cash_reserve_pct": "40",
+            "max_position_pct": "20",
+        },
     }
