@@ -759,7 +759,12 @@ async def _execute_signal(
         stop = entry_estimate - stop_distance
         target = entry_estimate + target_distance
         policy = _active_risk_policy()
-        max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", str(conviction_pct)))
+        # The operator-facing contract is a hard 20% maximum per new pair.
+        # An environment override may tighten this limit, but can never raise it.
+        configured_max_position_pct = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "20"))
+        if configured_max_position_pct <= 0:
+            return {"pair": pair, "decision": "HOLD", "reason": "Configured per-pair allocation limit must be positive."}
+        max_position_pct = min(D("20"), conviction_pct, configured_max_position_pct)
         allocatable_cash = min(
             D(str(account["cash"])) * D("0.995"),
             portfolio.equity * max_position_pct / D("100"),
@@ -794,7 +799,7 @@ async def _execute_signal(
             **fill,
             "event_type": "autonomous_trade_entry",
             "conviction_tier": conviction_tier,
-            "conviction_allocation_pct": str(conviction_pct),
+            "conviction_allocation_pct": str(max_position_pct),
             "timeframe": scalp["timeframe"],
             "strategy_confidence": str(confidence),
             "strategy_rationale": rationale[:1000],
@@ -807,7 +812,7 @@ async def _execute_signal(
             "decision": "BUY",
             "timeframe": scalp["timeframe"],
             "conviction": conviction_tier,
-            "allocation_pct": str(conviction_pct),
+            "allocation_pct": str(max_position_pct),
             "fill": fill,
             "account_version": saved.get("version"),
             "analysis": analysis,
