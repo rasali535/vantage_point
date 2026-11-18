@@ -56,7 +56,7 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum deterministic signal confidence; defaults to `0.62` |
 | `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Primary candle interval in minutes; defaults to `5` |
 | `HF_TOKEN` | Server-side Hugging Face token with inference permission; never expose it to the browser. |
-| `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen2.5-3B-Instruct`. |
+| `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen3-4B-Thinking-2507:cheapest`. |
 | `HF_CHAT_COMPLETIONS_URL` | Hugging Face Router OpenAI-compatible endpoint. |
 | `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |
 | `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |
@@ -71,7 +71,7 @@ The default database name remains `action_pilot` to preserve the existing collec
 
 ## Analysis providers
 
-Market Intelligence and Technical Analysis calculate evidence from supplied market data. Strategy BUY/SELL/HOLD and confidence remain deterministic. When configured, Hugging Face Qwen (`Qwen/Qwen2.5-3B-Instruct`) adds a research note to the Boardroom and powers the chat assistant; this note is advisory and cannot change the action or risk limits. The `/api/trading/models/readiness` endpoint reports provider configuration. Chronos-2 (`amazon/chronos-2`) remains a separate forecasting benchmark and is not represented as active until a dedicated compatible endpoint is deployed.
+Market Intelligence and Technical Analysis calculate evidence from supplied market data. Strategy BUY/SELL/HOLD and confidence remain deterministic. When configured, Hugging Face Qwen (`Qwen/Qwen3-4B-Thinking-2507:cheapest`) adds a research note to the Boardroom and powers the chat assistant; this note is advisory and cannot change the action or risk limits. The `/api/trading/models/readiness` endpoint reports provider configuration. Chronos-2 (`amazon/chronos-2`) remains a separate forecasting benchmark and is not represented as active until a dedicated compatible endpoint is deployed.
 
 ## Kraken adapter
 
