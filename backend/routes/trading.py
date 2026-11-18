@@ -557,6 +557,7 @@ async def get_paper_diagnostics(x_paper_token: str | None = Header(default=None)
         "realized_pnl": account_summary(account).get("realized_pnl") if account else "0.00",
         "stored_realized_pnl": (account or {}).get("realized_pnl", "0"),
         "realized_pnl_discrepancy": account_summary(account).get("realized_pnl_discrepancy") if account else "0.00",
+        "realized_pnl_reconciliation_status": account_summary(account).get("realized_pnl_reconciliation_status") if account else "consistent",
         "pnl_reconciliation_status": account_summary(account).get("pnl_reconciliation_status") if account else "consistent",
         "equity_pnl_delta": account_summary(account).get("equity_pnl_delta") if account else "0.00",
         "autopilot_enabled": runtime.get("enabled") is True,
