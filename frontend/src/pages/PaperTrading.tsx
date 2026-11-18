@@ -85,7 +85,7 @@ const CandleChart: React.FC<{ candles: Candle[]; trades: TradeMarker[]; position
   const width = 1100, height = 360, left = 18, right = 18, top = 18, bottom = 34;
   const plotW = width - left - right, plotH = height - top - bottom;
   const prices = candles.flatMap(c => [c.high, c.low]).filter(Number.isFinite);
-  const levels = [...prices, ...(position ? [Number(position.stop_loss), Number(position.take_profit)] : []), ...(currentPrice ? [currentPrice] : [])].filter(v => Number.isFinite(v) && v > 0);
+  const levels = [...prices, ...trades.map(t => Number(t.fill_price)), ...(position ? [Number(position.stop_loss), Number(position.take_profit)] : []), ...(currentPrice ? [currentPrice] : [])].filter(v => Number.isFinite(v) && v > 0);
   const min = Math.min(...levels), max = Math.max(...levels), pad = Math.max((max - min) * 0.08, max * 0.0002);
   const low = min - pad, high = max + pad, range = high - low || 1;
   const y = (price: number) => top + ((high - price) / range) * plotH;
@@ -178,7 +178,7 @@ const PaperTrading: React.FC = () => {
     try {
       const [summary, history, autoStatus, autoRuns] = await Promise.all([
         request('account'),
-        request('orders'),
+        request('orders?limit=10000'),
         request('autopilot'),
         request('autopilot/runs'),
       ]);
