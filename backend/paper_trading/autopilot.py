@@ -256,13 +256,17 @@ async def _record_event(db, event: dict) -> None:
 
 
 async def _dispatch_to_connected_broker(db, event: dict) -> None:
-    """Dispatch real-time trade signals to connected MetaTrader 4/5 EA or API Key exchanges."""
+    """Dispatch only explicitly live-authorized signals; paper fills never enter broker queues."""
+    # This function is called by the paper supervisor. Keep paper events isolated
+    # even when a live broker is connected to the account.
+    if str(event.get("execution_mode", "paper")).lower() == "paper" or event.get("paper_only") is True:
+        return
     try:
         broker_col = getattr(db, "broker_settings", None)
         if broker_col is None:
             return
         broker = await broker_col.find_one({"_id": "active_broker"})
-        if not broker or broker.get("mode") == "paper":
+        if not broker or broker.get("mode") == "paper" or broker.get("live_orders_enabled") is not True:
             return
 
         pair = str(event.get("pair") or "")
