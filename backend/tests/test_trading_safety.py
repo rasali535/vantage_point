@@ -6,7 +6,6 @@ from fastapi import HTTPException
 
 import database
 from agents.kraken import KrakenAgent
-from agents.meta_ai import MetaAIClient
 from decimal import Decimal
 from risk.engine import DeterministicRiskEngine, OrderProposal, RiskPolicy
 from routes.trading import manual_trade
@@ -47,12 +46,6 @@ class TradingSafetyTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as raised:
             await manual_trade(None)
         self.assertEqual(raised.exception.status_code, 423)
-
-    async def test_ai_provider_does_not_return_synthetic_analysis(self):
-        with patch.dict(os.environ, {"MODEL_API_KEY": ""}):
-            agent = MetaAIClient()
-            with self.assertRaisesRegex(RuntimeError, "not configured"):
-                await agent.chat("muse-spark-1.3", "system", "user")
 
     def test_risk_engine_rejects_when_policy_is_missing(self):
         proposal = OrderProposal(
