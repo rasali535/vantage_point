@@ -243,13 +243,20 @@ class ExnessReadOnlyClient:
                     # Exness reports subscription failures as structured messages
                     # without an instrument field. Surface those immediately instead
                     # of silently waiting until the initial-tick timeout.
-                    if "error_message" in event or "code" in event and "instrument" not in event:
+                    # Exness sends a successful subscription acknowledgement as
+                    # {"id": "<request id>", "code": 200}. It is not a tick and
+                    # must not be mistaken for a REQUEST_INVALID error.
+                    if event.get("code") == 200 and "instrument" not in event:
+                        continue
+                    if "error_message" in event or (
+                        "code" in event and "instrument" not in event
+                    ):
                         error_code = event.get("code")
-                        error_message = event.get("error_message", "REQUEST_INVALID")
-                        if isinstance(error_message, str):
+                        error_message = event.get("error_message")
+                        if isinstance(error_message, str) and error_message:
                             error_message = re.sub(r"[^A-Z0-9_ -]", "", error_message.upper())[:80]
                         else:
-                            error_message = "REQUEST_INVALID"
+                            error_message = f"ERROR_CODE_{error_code}"
                         raise ExnessAPIError(
                             f"Exness rejected tick subscription (code={error_code}, reason={error_message})."
                         )
