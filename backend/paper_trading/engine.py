@@ -239,6 +239,19 @@ def simulate_order(
     return updated, {**fill, "duplicate": False}
 
 
+def realized_pnl_from_orders(account: dict) -> tuple[Decimal, str]:
+    """Rebuild realized P&L from persisted SELL fills; use legacy field only for old empty ledgers."""
+    sell_fills = [
+        order for order in account.get("orders", [])
+        if str(order.get("side", "")).upper() == "SELL"
+        and order.get("realized_pnl_usd") is not None
+    ]
+    if sell_fills:
+        total = sum((dec(order["realized_pnl_usd"], "order realized_pnl_usd") for order in sell_fills), D("0"))
+        return _quantize(total, MONEY_STEP), "sell_fills"
+    return _quantize(dec(account.get("realized_pnl", "0"), "realized_pnl"), MONEY_STEP), "legacy_account_field"
+
+
 def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict:
     prices = prices or {}
     cash = dec(account["cash"], "cash")
@@ -267,8 +280,11 @@ def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict
         })
     equity = cash + market_value
     initial_eq = dec(account.get("initial_equity", equity), "initial_equity")
-    realized = dec(account.get("realized_pnl", "0"), "realized_pnl")
+    realized, realized_source = realized_pnl_from_orders(account)
+    stored_realized = dec(account.get("realized_pnl", "0"), "realized_pnl")
+    realized_discrepancy = _quantize(stored_realized - realized, MONEY_STEP)
     total_pnl = realized + unrealized_total
+    equity_pnl_delta = _quantize((equity - initial_eq) - total_pnl, MONEY_STEP)
     total_return_pct = (total_pnl / initial_eq * D("100")) if initial_eq > 0 else D("0")
     return {
         "mode": "paper",
@@ -278,7 +294,12 @@ def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict
         "positions": positions,
         "market_value": str(_quantize(market_value, MONEY_STEP)),
         "equity": str(_quantize(equity, MONEY_STEP)),
-        "realized_pnl": account.get("realized_pnl", "0"),
+        "realized_pnl": str(realized),
+        "stored_realized_pnl": str(_quantize(stored_realized, MONEY_STEP)),
+        "realized_pnl_source": realized_source,
+        "realized_pnl_discrepancy": str(realized_discrepancy),
+        "equity_pnl_delta": str(equity_pnl_delta),
+        "pnl_reconciliation_status": "consistent" if abs(equity_pnl_delta) <= D("0.02") else "mismatch",
         "unrealized_pnl": str(_quantize(unrealized_total, MONEY_STEP)),
         "total_pnl": str(_quantize(total_pnl, MONEY_STEP)),
         "total_return_pct": float(_quantize(total_return_pct, D("0.01"))),
