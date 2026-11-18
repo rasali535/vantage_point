@@ -225,6 +225,7 @@ class ExnessReadOnlyClient:
             async with websockets.connect(
                 ws_url, additional_headers=headers, open_timeout=12, close_timeout=2,
                 ping_interval=20, ping_timeout=20, compression=None,
+                subprotocols=["exness-ws-protocol"],
             ) as socket:
                 await socket.send(json.dumps({
                     "id": "vantage-point-initial-ticks",
