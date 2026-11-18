@@ -20,6 +20,7 @@ from agents.orchestrator import TradingOrchestrator
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.whipsaw_protection import whipsaw_protection
 from database import get_database
+from paper_trading.reentry import reentry_cooldown_remaining
 from paper_trading.engine import (
     PaperTradeError,
     account_equity,
@@ -723,6 +724,16 @@ async def _execute_signal(
 
     if confidence < confidence_floor or action == TradeAction.HOLD:
         return {"pair": pair, "decision": "HOLD", "reason": "Confidence or signal-quality threshold not met.", "analysis": analysis}
+
+    if action == TradeAction.BUY and not current:
+        cooldown_remaining = reentry_cooldown_remaining(account.get("orders", []), pair)
+        if cooldown_remaining > 0:
+            return {
+                "pair": pair,
+                "decision": "HOLD",
+                "reason": f"Re-entry cooldown active for {cooldown_remaining}s after the previous exit.",
+                "cooldown_remaining_seconds": cooldown_remaining,
+            }
 
     if action == TradeAction.BUY:
         if technical_signal != TradeAction.BUY or current:
