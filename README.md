@@ -55,7 +55,7 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `10` seconds |
 | `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum deterministic signal confidence; defaults to `0.62` |
 | `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Primary candle interval in minutes; defaults to `5` |
-| `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; defaults to `false`. No external LLM provider is used.
+| `HF_TOKEN` | Server-side Hugging Face token with inference permission; never expose it to the browser. |\n| `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen2.5-3B-Instruct`. |\n| `HF_CHAT_COMPLETIONS_URL` | Hugging Face Router OpenAI-compatible endpoint. |\n| `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |\n| `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |\n| `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; no longer controls Hugging Face advisory calls. |
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
