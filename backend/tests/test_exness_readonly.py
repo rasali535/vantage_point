@@ -80,6 +80,44 @@ class ExnessReadOnlyTests(unittest.TestCase):
         )
         client.private_key.public_key().verify(signature, payload_bytes)
 
+    def test_market_data_allowlist_rejects_other_instruments(self):
+        key = Ed25519PrivateKey.generate()
+        seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+        public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        env = {
+            "EXN_API_KEY": "exnsk-test",
+            "EXN_PRIVATE_KEY": (seed + public).hex(),
+            "EXN_ACCOUNT_ID": "123456",
+            "EXN_DISCOVERY_BASE_URL": "https://gateway.example",
+            "EXN_READ_ONLY": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            client = ExnessReadOnlyClient()
+        import asyncio
+        with self.assertRaises(ExnessConfigurationError):
+            asyncio.run(client.get_candles("AAPL"))
+        with self.assertRaises(ExnessConfigurationError):
+            asyncio.run(client.get_ticks(["XAUUSD", "AAPL"]))
+
+    def test_candle_request_rejects_invalid_timeframe_and_count(self):
+        key = Ed25519PrivateKey.generate()
+        seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+        public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        env = {
+            "EXN_API_KEY": "exnsk-test",
+            "EXN_PRIVATE_KEY": (seed + public).hex(),
+            "EXN_ACCOUNT_ID": "123456",
+            "EXN_DISCOVERY_BASE_URL": "https://gateway.example",
+            "EXN_READ_ONLY": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            client = ExnessReadOnlyClient()
+        import asyncio
+        with self.assertRaises(ExnessConfigurationError):
+            asyncio.run(client.get_candles("XAUUSD", "TICK", 100))
+        with self.assertRaises(ExnessConfigurationError):
+            asyncio.run(client.get_candles("XAUUSD", "M15", 501))
+
     def test_client_refuses_non_readonly_mode(self):
         with patch.dict(os.environ, {"EXN_READ_ONLY": "false"}, clear=False):
             with self.assertRaises(ExnessConfigurationError):
