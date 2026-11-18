@@ -1,24 +1,50 @@
-"""Risk analyst advisory. Deterministic risk controls remain authoritative."""
-import json
-import os
+"""Deterministic advisory risk summary; the risk engine remains authoritative."""
+import math
 from agents.contracts import AgentFinding
-from agents.meta_ai import meta_ai, DEFAULT_META_MODEL
+
+
+def _number(value):
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else None
+    except (TypeError, ValueError):
+        return None
 
 
 class RiskManagerAgent:
     name = "risk_manager"
 
     async def assess(self, pair: str, ticker: dict, technical: dict, portfolio: dict) -> AgentFinding:
-        response = await meta_ai.chat(
-            model=os.getenv("RISK_MODEL", DEFAULT_META_MODEL),
-            system_prompt=(
-                "You are the Risk Manager advisory agent. Identify uncertainty, liquidity, volatility "
-                "and downside scenarios from supplied facts only. You cannot approve orders or override "
-                "deterministic risk controls. Return JSON: summary, evidence[], confidence (0..1), warnings[]."
-            ),
-            user_prompt=json.dumps({"pair": pair, "ticker": ticker, "technical": technical, "portfolio": portfolio}, default=str),
+        warnings = []
+        evidence = []
+        last = _number((ticker or {}).get("last"))
+        atr = _number((technical or {}).get("atr"))
+        daily_loss = _number((portfolio or {}).get("daily_loss_pct"))
+        drawdown = _number((portfolio or {}).get("drawdown_pct"))
+        open_positions = _number((portfolio or {}).get("open_positions"))
+
+        if last is None or last <= 0:
+            warnings.append("Ticker price is unavailable; no trade should be proposed.")
+        if atr is None or atr <= 0:
+            warnings.append("ATR is unavailable; stop distance cannot be validated.")
+        elif last and last > 0:
+            atr_pct = atr / last * 100
+            evidence.append(f"ATR represents {atr_pct:.3f}% of the latest price.")
+            if atr_pct >= 3:
+                warnings.append("Volatility is elevated relative to price.")
+        if daily_loss is not None:
+            evidence.append(f"Current daily loss: {daily_loss:.3f}%.")
+        if drawdown is not None:
+            evidence.append(f"Current portfolio drawdown: {drawdown:.3f}%.")
+        if open_positions is not None:
+            evidence.append(f"Open positions: {int(open_positions)}.")
+        if not evidence:
+            warnings.append("Portfolio risk context is incomplete.")
+
+        return AgentFinding(
+            agent=self.name,
+            summary=f"Deterministic advisory risk review for {pair}; execution limits are enforced separately.",
+            evidence=evidence,
+            confidence=0.8 if not warnings else 0.55,
+            warnings=warnings,
         )
-        try:
-            return AgentFinding(agent=self.name, **json.loads(response))
-        except Exception as exc:
-            raise RuntimeError("Risk Manager returned an invalid structured assessment.") from exc

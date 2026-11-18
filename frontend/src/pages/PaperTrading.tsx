@@ -197,7 +197,7 @@ const PaperTrading: React.FC = () => {
       const latest = await request('autopilot');
       setAutopilot(latest);
       setMessage(latest.enabled
-        ? 'Autonomous paper trading started. It is now scanning Forex and Crypto pairs and managing virtual positions.'
+        ? 'Autonomous paper trading started. It is scanning the configured markets and managing virtual positions.'
         : 'New autonomous entries stopped. Protective exits remain monitored for open paper positions.');
       await refresh(true);
     } catch (err: any) {
@@ -211,7 +211,7 @@ const PaperTrading: React.FC = () => {
     if (!token.trim()) return;
     setBusy(true);
     setError('');
-    setMessage('Running immediate autonomous Forex, Metals, Indices & Crypto scan cycle...');
+    setMessage('Running immediate deterministic paper-trading scan across configured markets...');
     try {
       const result = await request('autopilot/run', { method: 'POST' });
       const fillsCount = (result.results || []).filter((r: any) => r.decision === 'BUY' || r.decision === 'SELL' || r.decision === 'EXECUTED').length;
@@ -239,7 +239,7 @@ const PaperTrading: React.FC = () => {
         body: JSON.stringify({ initial_balance_usd: '100.00', run_cycle: true }),
       });
       const fillsCount = (result.cycle?.results || []).filter((r: any) => r.decision === 'BUY' || r.decision === 'SELL').length;
-      setMessage(`Account funded with $100.00 USD and ${fillsCount} autonomous trade(s) placed across Forex, Metals, Indices & Crypto.`);
+      setMessage(`Account funded with $100.00 USD; ${fillsCount} simulated trade(s) placed across ${result.cycle?.pairs_checked || 0} configured markets.`);
       await refresh(true);
     } catch (err: any) {
       setError(err.message || 'Failed to reset paper account to $100.00 USD.');
@@ -312,7 +312,7 @@ const PaperTrading: React.FC = () => {
       <div className="pb-topbar">
         <div>
           <div className="pb-title"><Activity size={22} /> Paper Trading</div>
-          <div className="pb-sub">MUSE SPARK · FOREX &amp; KRAKEN SPOT · VIRTUAL USD · NO LIVE ORDERS</div>
+          <div className="pb-sub">DETERMINISTIC SIGNALS · KRAKEN CRYPTO · VIRTUAL USD · NO LIVE ORDERS</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="pb-live"><i />SIMULATION</span>
@@ -507,11 +507,11 @@ const PaperTrading: React.FC = () => {
           </div>
         </div>
         <div className="pb-muted" style={{ marginTop: 10 }}>
-          {autopilot ? `1m & 5m High-Speed Scalper Active (Metals Priority + Fast Movers) · Markets: ${autopilot.pairs.join(', ')} · Scalp scan every ${autopilot.scan_interval_seconds}s · Exit & profit-harvest checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
+          {autopilot ? `1m & 5m Deterministic Scalper Active · Markets: ${autopilot.pairs.join(', ')} · Scalp scan every ${autopilot.scan_interval_seconds}s · Exit & profit-harvest checks every ${autopilot.monitor_interval_seconds}s` : 'Connect the paper account to load autopilot controls.'}
         </div>
         {autopilot && !autopilot.worker_running && <div className="pb-alert pb-alert-error" style={{ marginTop: 10, marginBottom: 0 }}>Background worker is not running in this API process. Autopilot controls are unavailable.</div>}
         <div className="pb-muted" style={{ marginTop: 10 }}>
-          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. The AI cannot bypass the deterministic risk limits.
+          Paper mode only. Stop prevents new entries; protective monitoring continues for existing virtual positions. No external AI provider is required; deterministic risk limits remain authoritative.
         </div>
       </div>
 
