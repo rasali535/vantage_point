@@ -260,15 +260,14 @@ const PaperTrading: React.FC = () => {
               return;
             }
             if (message.channel !== 'ohlc' || !Array.isArray(message.data)) return;
-            const updates = message.data
+            const updates: Candle[] = message.data
               .filter((item: any) => item.symbol === pair)
-              .map((item: any) => ({
+              .map((item: any): Candle => ({
                 timestamp: Math.floor(Date.parse(item.interval_begin) / 1000),
                 open: Number(item.open),
                 high: Number(item.high),
                 low: Number(item.low),
                 close: Number(item.close),
-                volume: Number(item.volume || 0),
               }))
               .filter((item: Candle) => Number.isFinite(item.timestamp) && [item.open, item.high, item.low, item.close].every(value => Number.isFinite(value) && value > 0));
             if (!updates.length) return;
