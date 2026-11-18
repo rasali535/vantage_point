@@ -7,7 +7,7 @@ Ras Ali AI Trader is the evolution of ActionPilot, maintained in this repository
 - **Vercel Services** hosts the React/Vite frontend and FastAPI backend in one project and deployment.
 - **MongoDB Atlas** is the persistent application database. Configure `MONGODB_URL` in Vercel's server-side environment.
 - **Kraken Spot REST** supplies public ticker and OHLC market data. Private account reads are opt-in and disabled by default.
-- **Meta Model API** (`muse-spark-1.3` by default) powers the research, risk and strategy agents. The API key remains server-side. They do not receive exchange credentials.
+- **Deterministic analysis agents** power market context, technical analysis, strategy proposals and risk advisories. The demo trading path makes no external LLM/API inference calls.
 - **Live order execution is disabled permanently in the current release.** The paper engine supports simulated entries and exits; the autonomous paper supervisor can be enabled by an authenticated operator.
 
 There is no Vultr dependency. Do not use the retired Vultr VM, its IP address, SSH scripts, or provisioning scripts.
@@ -38,11 +38,6 @@ Set secrets in Vercel project environment settings, not in source files.
 | `KRAKEN_API_SECRET` | Server-side Kraken API secret (base64) |
 | `KRAKEN_ACCOUNT_READS_ENABLED` | Keep `false` until credentials are rotated and read-only permissions are verified |
 | `TRADING_PAIR` | Kraken market pair to analyse; defaults to `BTC/USD` |
-| `MODEL_API_KEY` | Meta Model API bearer key; create it in the Meta Model API dashboard |
-| `META_MODEL_API_BASE_URL` | Optional Meta API base URL; defaults to `https://api.meta.ai/v1` |
-| `RESEARCH_MODEL` | Market intelligence model; defaults to Meta `muse-spark-1.3` |
-| `RISK_MODEL` | Risk analysis model; defaults to Meta `muse-spark-1.3` |
-| `TRADING_MODEL` | Strategy synthesis model; defaults to Meta `muse-spark-1.3` |
 | `RISK_MAX_TRADE_RISK_PCT` | Operator-defined maximum stop-loss risk per proposed trade |
 | `RISK_MAX_DAILY_LOSS_PCT` | Operator-defined daily loss ceiling |
 | `RISK_MAX_DRAWDOWN_PCT` | Operator-defined maximum drawdown |
@@ -52,14 +47,15 @@ Set secrets in Vercel project environment settings, not in source files.
 | `PAPER_TRADING_ENABLED` | Set `true` only when paper simulation is ready; defaults to `false` |
 | `PAPER_API_TOKEN` | Server-side secret required in the `X-Paper-Token` header |
 | `PAPER_INITIAL_BALANCE_USD` | Explicit starting virtual USD balance; no default is applied |
-| `PAPER_FEE_RATE` | Simulated fee fraction; defaults to `0.0026` (0.26%) |
-| `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `5` |
+| `PAPER_FEE_RATE` | Simulated fee fraction; defaults to `0.0001` (0.01% cap) |
+| `PAPER_SLIPPAGE_BPS` | Simulated slippage in basis points; defaults to `0.5` |
 | `PAPER_AUTOTRADING_ALLOWED` | Server-side permission for autonomous paper trading; defaults to `true`, but the operator must still start it |
 | `PAPER_AUTOTRADE_PAIRS` | Comma-separated USD-quoted Kraken spot pairs; defaults to a diversified BTC, ETH, SOL, XRP, ADA, DOGE, LTC, LINK, DOT and BCH basket |
-| `PAPER_AUTOTRADING_SCAN_SECONDS` | AI analysis interval; defaults to `300` seconds |
-| `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `20` seconds |
-| `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum AI strategy confidence; defaults to `0.70` |
-| `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Kraken candle interval in minutes; defaults to `60` |
+| `PAPER_AUTOTRADING_SCAN_SECONDS` | Autonomous paper scan interval; defaults to `30` seconds |
+| `PAPER_AUTOTRADING_MONITOR_SECONDS` | Protective exit check interval; defaults to `10` seconds |
+| `PAPER_AUTOTRADING_MIN_CONFIDENCE` | Minimum deterministic signal confidence; defaults to `0.62` |
+| `PAPER_AUTOTRADING_CANDLE_INTERVAL` | Primary candle interval in minutes; defaults to `5` |
+| `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; defaults to `false`. No external LLM provider is used.
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until exposed credentials have been rotated.
 
@@ -69,9 +65,9 @@ The backend uses the native PyMongo asynchronous client, reused within the ASGI 
 
 The default database name remains `action_pilot` to preserve the existing collection namespace. The trading routes use the existing `trading_ledger`, `boardroom_history`, and `audit_logs` collections.
 
-## Meta AI provider
+## Analysis providers
 
-All AI chat, market research, risk analysis and strategy synthesis use Meta's official Model API at `https://api.meta.ai/v1/chat/completions`. Configure `MODEL_API_KEY` in Vercel server-side environment variables. The default model is `muse-spark-1.3`; `RESEARCH_MODEL`, `RISK_MODEL`, and `TRADING_MODEL` can override it independently. No Featherless endpoint or API key is used.
+Market Intelligence, Strategy and Risk Manager use deterministic Python calculations over supplied market data. No Meta API key, hosted model endpoint, or paid inference allowance is required. The `/api/trading/meta/readiness` compatibility endpoint reports that external inference is disabled. Hugging Face forecasting models may be benchmarked separately, but are not in the demo execution path.
 
 ## Kraken adapter
 
@@ -79,7 +75,7 @@ Public market data is fetched from Kraken Spot REST `Ticker` and `OHLC`. Private
 
 ## Trading safety requirements
 
-Meta Model API failures are returned as service errors; no synthetic analysis is substituted. The platform runs in **research + optional paper-simulation mode**. Live execution remains disabled. Paper simulation is disabled unless `PAPER_TRADING_ENABLED=true`, `PAPER_API_TOKEN` and `PAPER_INITIAL_BALANCE_USD` are configured. The `/api/trading/paper/account`, `/api/trading/paper/orders` GET/POST and `/api/trading/paper/monitor` POST routes require the `X-Paper-Token` header. Paper fills use the latest public Kraken ticker, configurable fee and slippage assumptions, and a single MongoDB account document with optimistic version checks. Paper BUY orders require a configured deterministic risk policy and a stop-loss when policy requires one. Spot SELL orders can only reduce an existing virtual position; shorting is rejected. Simulated fills are marked `execution_mode=paper` and `exchange_order_submitted=false`. The paper engine does not call Kraken private endpoints or order placement.
+Deterministic analysis is used; missing or invalid market inputs fail closed. The platform runs in **research + optional paper-simulation mode**. Live execution remains disabled. Paper simulation is disabled unless `PAPER_TRADING_ENABLED=true`, `PAPER_API_TOKEN` and `PAPER_INITIAL_BALANCE_USD` are configured. The `/api/trading/paper/account`, `/api/trading/paper/orders` GET/POST and `/api/trading/paper/monitor` POST routes require the `X-Paper-Token` header. Paper fills use the latest public Kraken ticker, configurable fee and slippage assumptions, and a single MongoDB account document with optimistic version checks. Paper BUY orders require a configured deterministic risk policy and a stop-loss when policy requires one. Spot SELL orders can only reduce an existing virtual position; shorting is rejected. Simulated fills are marked `execution_mode=paper` and `exchange_order_submitted=false`. The paper engine does not call Kraken private endpoints or order placement.
 
 The Paper Trading workspace displays virtual equity, cash, positions and simulated fills. Its authenticated autonomous supervisor can analyse configured Kraken USD-quoted spot pairs, calculate a risk-sized position, simulate entries, close a held position on a confirmed opposite signal, and monitor stored stop-loss/take-profit exits. Start/stop controls are protected by the paper token. Stopping the supervisor blocks new entries while continuing protective monitoring for already-open virtual positions. The worker uses a MongoDB lease to reduce duplicate execution across API instances. The current worker runs inside the FastAPI process; a Render Free web service may sleep while idle, so reliable continuous operation requires an always-on deployment. This phase does not yet automate Forex pairs; the multi-market FX adapter and FX-specific sizing must be completed first. Before any live execution can be enabled, the following must be implemented and tested:
 
@@ -103,13 +99,11 @@ Historical repository commits contained credentials and remote-server access det
 
 The market scan is orchestrated by six distinct agents:
 
-1. **Market Intelligence** — Meta Model API analysis of verified Kraken ticker and candle data only.
+1. **Market Intelligence** — deterministic momentum, spread and price-context analysis from verified provider data.
 2. **Technical Analyst** — deterministic EMA, RSI and ATR calculations; insufficient history returns HOLD.
-3. **Strategy** — Meta Model API synthesizes the market, technical and risk findings into a typed BUY/SELL/HOLD research proposal.
-4. **Risk Manager** — Meta Model API provides downside and uncertainty analysis. It is advisory only; the deterministic risk engine is authoritative.
+3. **Strategy** — deterministic rules synthesize market, technical and risk findings into a typed BUY/SELL/HOLD proposal.
+4. **Risk Manager** — deterministic downside, volatility and portfolio-context analysis. It is advisory only; the deterministic risk engine is authoritative.
 5. **Execution** — validates readiness and configured risk policy. This stage does not submit orders; sizing, human approval, authentication, idempotency and exchange-confirmed lifecycle remain mandatory before any execution implementation.
 6. **Performance** — computes performance only from closed, exchange-confirmed ledger records; it reports insufficient history rather than fabricating metrics.
 
 The six-agent cycle is invoked by `POST /api/trading/scan`. Its complete structured output is persisted to MongoDB boardroom history and its summary to the audit log. All responses are research-only and `execution_enabled` remains false.
-
-Optional model overrides: `MARKET_INTELLIGENCE_MODEL`, `RISK_MODEL`, and `TRADING_MODEL`. All default to Meta `muse-spark-1.3`.
