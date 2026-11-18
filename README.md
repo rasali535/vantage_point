@@ -59,7 +59,7 @@ Set secrets in Vercel project environment settings, not in source files.
 | `HF_CHAT_MODEL` | Chat model; defaults to `Qwen/Qwen3-4B-Thinking-2507:cheapest`. |
 | `HF_CHAT_COMPLETIONS_URL` | Hugging Face Router OpenAI-compatible endpoint. |
 | `HF_REQUEST_TIMEOUT_SECONDS` | Model request timeout; defaults to 20 seconds. |
-| `HF_STRATEGY_ADVISORY_ENABLED` | Enables optional Qwen research notes; model output cannot alter deterministic action or risk limits. |
+| `HF_STRATEGY_ADVISORY_ENABLED` | Enables recurring Qwen research notes; defaults to `false` to conserve inference credits. Model output cannot alter deterministic action or risk limits. |
 | `PAPER_AUTOTRADING_USE_LLM` | Legacy compatibility switch; no longer controls Hugging Face advisory calls. |
 
 Do not commit real values or expose them in logs. Use a least-privilege Kraken key; withdrawals must remain disabled. Do not enable private account reads until credentials have been rotated.
