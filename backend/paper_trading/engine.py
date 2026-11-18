@@ -299,6 +299,7 @@ def account_summary(account: dict, prices: dict[str, Any] | None = None) -> dict
         "stored_realized_pnl": str(_quantize(stored_realized, MONEY_STEP)),
         "realized_pnl_source": realized_source,
         "realized_pnl_discrepancy": str(realized_discrepancy),
+        "realized_pnl_reconciliation_status": "consistent" if realized_discrepancy == 0 else "mismatch",
         "equity_pnl_delta": str(equity_pnl_delta),
         "pnl_reconciliation_status": "consistent" if abs(equity_pnl_delta) <= D("0.02") else "mismatch",
         "unrealized_pnl": str(_quantize(unrealized_total, MONEY_STEP)),
