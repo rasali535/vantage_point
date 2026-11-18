@@ -12,6 +12,7 @@ from agents.risk_manager import RiskManagerAgent
 from agents.strategy import StrategyAgent
 from agents.execution import ExecutionAgent
 from agents.performance import PerformanceAgent
+from agents.huggingface_client import huggingface_client
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,25 @@ class TradingOrchestrator:
                 performance,
             ),
         )
+        # Optional Hugging Face research note: advisory only; it cannot change the action or confidence.
+        if os.getenv("HF_STRATEGY_ADVISORY_ENABLED", "false").lower() == "true" and huggingface_client.configured:
+            try:
+                advisory = await asyncio.wait_for(
+                    huggingface_client.chat([
+                        {"role": "system", "content": "You are a trading research analyst. Give a concise, evidence-bound interpretation. Do not recommend changing the supplied action, invent data, or issue order instructions."},
+                        {"role": "user", "content": (
+                            f"Pair: {pair}\nTicker: {ticker}\nMarket context: {market.model_dump(mode='json')}\n"
+                            f"Technical report: {technical.model_dump(mode='json')}\nRisk advisory: {risk.model_dump(mode='json')}\n"
+                            f"Deterministic action: {proposal.action.value}; confidence: {proposal.confidence}. "
+                            "Provide a brief independent research note and state uncertainty."
+                        )},
+                    ], max_tokens=220, temperature=0.1),
+                    timeout=22.0,
+                )
+                proposal.rationale = proposal.rationale + " | Hugging Face Qwen research note (advisory only): " + advisory[:1200]
+            except Exception as exc:
+                logger.warning("huggingface_strategy_advisory_unavailable error=%s", type(exc).__name__)
+
         entry = Decimal(str(ticker.get("last", "0")))
         assessment = self.execution.assess(pair, proposal, entry, portfolio)
         return TradingCycleResult(
