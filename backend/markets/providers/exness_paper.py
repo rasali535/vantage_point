@@ -27,7 +27,9 @@ class ExnessPaperMarketData:
         # Lazy construction keeps missing credentials from preventing API startup.
         self._client = client
         self._ticks: dict[str, dict[str, Any]] = {}
-        self._ticks_refreshed_at = 0.0
+        # Track freshness per instrument: refreshing EURUSD must not make an
+        # older cached XAUUSD/GBPUSD quote appear fresh.
+        self._tick_refreshed_at: dict[str, float] = {}
         self._refresh_lock = asyncio.Lock()
 
     def _get_client(self) -> ExnessReadOnlyClient:
@@ -60,16 +62,29 @@ class ExnessPaperMarketData:
                     and 0 < bid <= ask
                 ):
                     refreshed[instrument] = dict(tick)
+            now = time.monotonic()
             self._ticks.update(refreshed)
-            self._ticks_refreshed_at = time.monotonic()
+            for instrument in refreshed:
+                self._tick_refreshed_at[instrument] = now
+            missing = sorted(set(instruments) - set(refreshed))
             if not refreshed:
-                raise RuntimeError("Exness returned no valid bid/ask ticks for the paper watchlist.")
+                raise RuntimeError(
+                    "Exness returned no valid bid/ask ticks for the requested instruments."
+                )
+            if missing:
+                # Partial snapshots are usable for the instruments actually
+                # received; missing symbols will be retried independently.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "exness_tick_snapshot_partial received=%s missing=%s",
+                    sorted(refreshed), missing,
+                )
 
     async def get_ticker(self, pair: str) -> dict[str, Any]:
         instrument = self.instrument_for_pair(pair)
         if (
             instrument not in self._ticks
-            or time.monotonic() - self._ticks_refreshed_at > 5.0
+            or time.monotonic() - self._tick_refreshed_at.get(instrument, 0.0) > 5.0
         ):
             await self.refresh_ticks([pair])
         tick = self._ticks.get(instrument)
