@@ -126,7 +126,7 @@ class ExnessPaperMarketData:
 
     async def get_ohlc(self, pair: str, interval: int = 5) -> list[dict[str, Any]]:
         instrument = self.instrument_for_pair(pair)
-        timeframe = "M1" if interval <= 1 else "M5" if interval <= 5 else "M15"
+        timeframe = "M1" if interval <= 1 else "M5" if interval <= 5 else "M15" if interval <= 15 else "H1"
         candles = await self._get_client().get_candles(
             instrument, timeframe=timeframe, count=120, price_type="both"
         )
@@ -137,9 +137,10 @@ class ExnessPaperMarketData:
             for normalized in [self.normalize_candle(candle)]
             if normalized is not None
         ]
-        if len(parsed) < 30:
+        minimum = 50 if timeframe in {"M15", "H1"} else 30
+        if len(parsed) < minimum:
             raise RuntimeError(
                 f"Exness returned only {len(parsed)} valid {timeframe} candles for {instrument}; "
-                "at least 30 are required for the scalping indicators."
+                f"at least {minimum} are required for the momentum indicators."
             )
         return parsed
