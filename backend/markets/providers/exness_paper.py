@@ -46,9 +46,19 @@ class ExnessPaperMarketData:
         return instrument
 
     async def refresh_ticks(self, pairs: list[str]) -> None:
-        instruments = list(dict.fromkeys(self.instrument_for_pair(pair) for pair in pairs))
+        # The current Exness Trading API rollout supports only the explicitly
+        # mapped FX/metals instruments. Ignore unrelated watchlist symbols here;
+        # their individual get_ticker calls fail closed with a clear ValueError.
+        supported_pairs = [
+            pair for pair in pairs if pair.strip().upper() in PAIR_TO_INSTRUMENT
+        ]
+        instruments = list(dict.fromkeys(
+            PAIR_TO_INSTRUMENT[pair.strip().upper()] for pair in supported_pairs
+        ))
         if not instruments:
-            return
+            raise RuntimeError(
+                "No Exness-supported instruments are present in the paper watchlist."
+            )
         async with self._refresh_lock:
             ticks = await self._get_client().get_ticks(instruments)
             refreshed: dict[str, dict[str, Any]] = {}
