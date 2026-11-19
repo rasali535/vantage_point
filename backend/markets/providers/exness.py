@@ -12,6 +12,8 @@ import logging
 import os
 import re
 import time
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 import httpx
@@ -95,6 +97,11 @@ class ExnessReadOnlyClient:
         self.gateway = _base_url(_required_env("EXN_DISCOVERY_BASE_URL"))
         self.private_key = _load_private_key(_required_env("EXN_PRIVATE_KEY"))
         self._access_point: str | None = None
+        self._request_lock = __import__("asyncio").Lock()
+        self._next_request_at = 0.0
+        self._rate_limited_until = 0.0
+        self._rate_limit_streak = 0
+        self._min_request_interval = max(0.25, min(10.0, float(os.getenv("EXN_MIN_REQUEST_INTERVAL_SECONDS", "1.0"))))
 
     def _signed_get_headers(self, path_with_query: str) -> dict[str, str]:
         timestamp = int(time.time() * 1000)
@@ -124,13 +131,43 @@ class ExnessReadOnlyClient:
     async def _get_json(self, host: str, path_with_query: str) -> dict:
         if not path_with_query.startswith("/") or path_with_query.startswith("//"):
             raise ExnessConfigurationError("Invalid Exness API path.")
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-            response = await client.get(
-                host + path_with_query,
-                headers=self._signed_get_headers(path_with_query),
-            )
+        import asyncio
+        async with self._request_lock:
+            now = time.monotonic()
+            if now < self._rate_limited_until:
+                remaining = max(1, int(self._rate_limited_until - now))
+                raise ExnessAPIError(f"Exness rate-limit cooldown active; retry in approximately {remaining}s (HTTP 429).")
+            wait_for_slot = self._next_request_at - now
+            if wait_for_slot > 0:
+                await asyncio.sleep(wait_for_slot)
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+                response = await client.get(host + path_with_query, headers=self._signed_get_headers(path_with_query))
+            completed_at = time.monotonic()
+            self._next_request_at = completed_at + self._min_request_interval
+            if response.status_code == 429:
+                self._rate_limit_streak = min(self._rate_limit_streak + 1, 4)
+                backoff = min(300.0, 60.0 * (2 ** (self._rate_limit_streak - 1)))
+                retry_after = response.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        backoff = max(backoff, min(900.0, float(retry_after)))
+                    except ValueError:
+                        try:
+                            retry_at = parsedate_to_datetime(retry_after)
+                            if retry_at.tzinfo is None:
+                                retry_at = retry_at.replace(tzinfo=timezone.utc)
+                            backoff = max(backoff, min(900.0, (retry_at - datetime.now(timezone.utc)).total_seconds()))
+                        except (TypeError, ValueError, OverflowError):
+                            pass
+                self._rate_limited_until = completed_at + max(1.0, backoff)
+                logger.warning("exness_rate_limit_cooldown seconds=%s streak=%s", int(self._rate_limited_until - completed_at), self._rate_limit_streak)
+            elif response.status_code < 400:
+                self._rate_limit_streak = 0
         if response.is_redirect:
             raise ExnessAPIError("Exness returned a redirect; signed credentials were not forwarded.")
+        if response.status_code == 429:
+            remaining = max(1, int(self._rate_limited_until - time.monotonic()))
+            raise ExnessAPIError(f"Exness API returned HTTP 429; cooldown {remaining}s.")
         if response.status_code >= 400:
             raise ExnessAPIError(f"Exness API returned HTTP {response.status_code}.")
         try:
