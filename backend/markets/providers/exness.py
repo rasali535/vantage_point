@@ -5,6 +5,7 @@ position mutation, or trade execution methods.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -97,7 +98,7 @@ class ExnessReadOnlyClient:
         self.gateway = _base_url(_required_env("EXN_DISCOVERY_BASE_URL"))
         self.private_key = _load_private_key(_required_env("EXN_PRIVATE_KEY"))
         self._access_point: str | None = None
-        self._request_lock = __import__("asyncio").Lock()
+        self._request_lock = asyncio.Lock()
         self._next_request_at = 0.0
         self._rate_limited_until = 0.0
         self._rate_limit_streak = 0
@@ -131,7 +132,6 @@ class ExnessReadOnlyClient:
     async def _get_json(self, host: str, path_with_query: str) -> dict:
         if not path_with_query.startswith("/") or path_with_query.startswith("//"):
             raise ExnessConfigurationError("Invalid Exness API path.")
-        import asyncio
         async with self._request_lock:
             now = time.monotonic()
             if now < self._rate_limited_until:
