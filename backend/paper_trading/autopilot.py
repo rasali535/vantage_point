@@ -1156,6 +1156,13 @@ async def _worker_loop() -> None:
                     now_loop = asyncio.get_running_loop().time()
                     if last_scan is None or (now_loop - last_scan >= scan_interval):
                         cycle_started = _utcnow()
+                        await db.paper_autopilot_worker.update_one(
+                            {"_id": "singleton", "owner": _worker_owner},
+                            {"$set": {
+                                "status": "cycle_running",
+                                "last_cycle_started_at": cycle_started,
+                            }},
+                        )
                         logger.info("paper_autopilot_cycle_started timestamp=%s", cycle_started.isoformat())
                         async with _cycle_lock:
                             summary = await run_autopilot_cycle(db)
@@ -1165,7 +1172,6 @@ async def _worker_loop() -> None:
                             {"_id": "singleton", "owner": _worker_owner},
                             {"$set": {
                                 "status": "running",
-                                "last_cycle_started_at": cycle_started,
                                 "last_cycle_completed_at": cycle_completed,
                                 "last_cycle_status": summary.get("status", "completed"),
                                 "last_cycle_pairs_checked": summary.get("pairs_checked", 0),
