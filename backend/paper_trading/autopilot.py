@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 D = Decimal
 QTY_STEP = D("0.00000001")
 _worker_task: asyncio.Task | None = None
+_cycle_lock = asyncio.Lock()
 _worker_owner = uuid.uuid4().hex
 def _build_market_provider():
     provider = os.getenv("PAPER_MARKET_DATA_PROVIDER", "yahoo").strip().lower()
@@ -371,15 +372,17 @@ async def _dispatch_external_push(db, notif: dict) -> None:
 
 
 async def _acquire_worker_lease(db) -> bool:
+    """Acquire or renew the singleton worker lease; persist heartbeat state for diagnosis."""
     now = _utcnow()
     expires = now + timedelta(seconds=600)
+    fields = {
+        "owner": _worker_owner,
+        "expires_at": expires,
+        "heartbeat_at": now,
+        "status": "running",
+    }
     try:
-        await db.paper_autopilot_worker.insert_one({
-            "_id": "singleton",
-            "owner": _worker_owner,
-            "expires_at": expires,
-            "heartbeat_at": now,
-        })
+        await db.paper_autopilot_worker.insert_one({"_id": "singleton", **fields})
         return True
     except DuplicateKeyError:
         pass
@@ -391,14 +394,24 @@ async def _acquire_worker_lease(db) -> bool:
                 {"owner": _worker_owner},
             ],
         },
-        {"$set": {"owner": _worker_owner, "expires_at": expires, "heartbeat_at": now}},
+        {"$set": fields},
         return_document=ReturnDocument.AFTER,
     )
     return bool(lease and lease.get("owner") == _worker_owner)
 
 
 async def _release_worker_lease(db) -> None:
-    await db.paper_autopilot_worker.delete_one({"_id": "singleton", "owner": _worker_owner})
+    """Mark the lease stopped without deleting its last heartbeat/cycle diagnostics."""
+    now = _utcnow()
+    await db.paper_autopilot_worker.update_one(
+        {"_id": "singleton", "owner": _worker_owner},
+        {"$set": {
+            "owner": None,
+            "status": "stopped",
+            "heartbeat_at": now,
+            "expires_at": now,
+        }},
+    )
 
 
 async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str, Decimal], list[dict]]:
@@ -1081,14 +1094,18 @@ async def run_autopilot_cycle(db=None) -> dict:
 
 
 async def run_autopilot_once(db=None) -> dict:
-    """Operator-triggered immediate autopilot cycle."""
+    """Operator-triggered immediate autopilot cycle, serialized with the worker."""
     if db is None:
         db = await get_database()
-    await _acquire_worker_lease(db)
+    if not await _acquire_worker_lease(db):
+        raise PaperTradeError("Autopilot worker lease is held by another instance; cycle blocked.")
     try:
-        return await run_autopilot_cycle(db)
+        async with _cycle_lock:
+            return await run_autopilot_cycle(db)
     finally:
-        await _release_worker_lease(db)
+        # The background worker owns the persistent lease while it is running.
+        if _worker_task is None or _worker_task.done():
+            await _release_worker_lease(db)
 
 
 async def _worker_loop() -> None:
@@ -1098,50 +1115,99 @@ async def _worker_loop() -> None:
     keepalive_url = (
         os.getenv("RENDER_EXTERNAL_URL")
         or os.getenv("PUBLIC_BACKEND_URL")
-        or "https://vantage-point-1qv7.onrender.com"
+        or "https://vantage-point-2km6.onrender.com"
     ).rstrip("/") + "/health"
     last_scan: float | None = None
     last_keepalive: float = 0.0
-    while True:
-        try:
-            now_loop = asyncio.get_running_loop().time()
-            if now_loop - last_keepalive >= 240.0:
-                last_keepalive = now_loop
-                try:
-                    async with httpx.AsyncClient(timeout=5.0) as ka_client:
-                        await ka_client.get(keepalive_url)
-                except Exception:
-                    pass
-            if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true" or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
-                await asyncio.sleep(monitor_interval)
-                continue
-            db = await get_database()
-            state = await db.paper_runtime.find_one({"_id": "autopilot"})
-            if os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true" and os.getenv("PAPER_INITIAL_BALANCE_USD"):
-                if await _acquire_worker_lease(db):
+    db = None
+    logger.info(
+        "paper_autopilot_worker_started monitor_interval_seconds=%s scan_interval_seconds=%s",
+        monitor_interval, scan_interval,
+    )
+    try:
+        while True:
+            try:
+                now_loop = asyncio.get_running_loop().time()
+                if now_loop - last_keepalive >= 240.0:
+                    last_keepalive = now_loop
                     try:
-                        if state and state.get("enabled") is True and _enabled_by_operator():
-                            now = asyncio.get_running_loop().time()
-                            if last_scan is None or (now - last_scan >= scan_interval):
-                                await run_autopilot_cycle(db)
-                                last_scan = now
-                            else:
-                                account = await db.paper_accounts.find_one({"_id": "default"})
-                                if account and account.get("positions"):
-                                    await _mark_and_protect_positions(db, account)
-                        else:
-                            # Stopping new entries does not abandon protective
-                            # exits for positions already open in the virtual account.
-                            account = await db.paper_accounts.find_one({"_id": "default"})
-                            if account and account.get("positions"):
-                                await _mark_and_protect_positions(db, account)
-                    finally:
-                        await _release_worker_lease(db)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.exception("paper_autopilot_worker_error error_type=%s", type(exc).__name__)
-        await asyncio.sleep(monitor_interval)
+                        async with httpx.AsyncClient(timeout=5.0) as ka_client:
+                            await ka_client.get(keepalive_url)
+                    except Exception as exc:
+                        logger.warning("paper_autopilot_keepalive_failed error_type=%s", type(exc).__name__)
+
+                db = await get_database()
+                if not await _acquire_worker_lease(db):
+                    logger.warning("paper_autopilot_worker_lease_unavailable; trading cycle blocked")
+                    await asyncio.sleep(monitor_interval)
+                    continue
+
+                trading_configured = (
+                    os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true"
+                    and bool(os.getenv("PAPER_INITIAL_BALANCE_USD"))
+                )
+                state = await db.paper_runtime.find_one({"_id": "autopilot"}) if trading_configured else None
+                if not trading_configured:
+                    await db.paper_autopilot_worker.update_one(
+                        {"_id": "singleton", "owner": _worker_owner},
+                        {"$set": {"status": "idle_config_disabled"}},
+                    )
+                elif state and state.get("enabled") is True and _enabled_by_operator():
+                    now_loop = asyncio.get_running_loop().time()
+                    if last_scan is None or (now_loop - last_scan >= scan_interval):
+                        cycle_started = _utcnow()
+                        await db.paper_autopilot_worker.update_one(
+                            {"_id": "singleton", "owner": _worker_owner},
+                            {"$set": {
+                                "status": "cycle_running",
+                                "last_cycle_started_at": cycle_started,
+                            }},
+                        )
+                        logger.info("paper_autopilot_cycle_started timestamp=%s", cycle_started.isoformat())
+                        async with _cycle_lock:
+                            summary = await run_autopilot_cycle(db)
+                        last_scan = now_loop
+                        cycle_completed = _utcnow()
+                        await db.paper_autopilot_worker.update_one(
+                            {"_id": "singleton", "owner": _worker_owner},
+                            {"$set": {
+                                "status": "running",
+                                "last_cycle_completed_at": cycle_completed,
+                                "last_cycle_status": summary.get("status", "completed"),
+                                "last_cycle_pairs_checked": summary.get("pairs_checked", 0),
+                            }},
+                        )
+                        logger.info(
+                            "paper_autopilot_cycle_completed status=%s pairs_checked=%s timestamp=%s",
+                            summary.get("status", "completed"),
+                            summary.get("pairs_checked", 0),
+                            cycle_completed.isoformat(),
+                        )
+                    else:
+                        account = await db.paper_accounts.find_one({"_id": "default"})
+                        if account and account.get("positions"):
+                            await _mark_and_protect_positions(db, account)
+                else:
+                    # Disabled entry mode still manages protective exits for existing paper positions.
+                    account = await db.paper_accounts.find_one({"_id": "default"})
+                    if account and account.get("positions"):
+                        await _mark_and_protect_positions(db, account)
+                    await db.paper_autopilot_worker.update_one(
+                        {"_id": "singleton", "owner": _worker_owner},
+                        {"$set": {"status": "idle_autopilot_disabled"}},
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("paper_autopilot_worker_error error_type=%s", type(exc).__name__)
+            await asyncio.sleep(monitor_interval)
+    finally:
+        if db is not None:
+            try:
+                await _release_worker_lease(db)
+            except Exception:
+                logger.exception("paper_autopilot_worker_lease_release_failed")
+        logger.info("paper_autopilot_worker_stopped")
 
 
 def start_worker() -> None:
@@ -1182,10 +1248,24 @@ async def set_autopilot_enabled(db, enabled: bool) -> dict:
 
 async def autopilot_status(db) -> dict:
     state = await db.paper_runtime.find_one({"_id": "autopilot"}) or {"enabled": False}
+    worker_record = await db.paper_autopilot_worker.find_one({"_id": "singleton"}) or {}
+    worker_expires = worker_record.get("expires_at")
+    worker_lease_active = bool(
+        worker_record.get("owner")
+        and worker_expires
+        and worker_expires > _utcnow()
+    )
     return {
         "enabled": state.get("enabled") is True,
         "worker_configured": _enabled_by_operator(),
         "worker_running": _worker_task is not None and not _worker_task.done(),
+        "worker_lease_active": worker_lease_active,
+        "worker_status": worker_record.get("status", "unknown"),
+        "worker_heartbeat_at": worker_record.get("heartbeat_at"),
+        "worker_lease_expires_at": worker_expires,
+        "last_cycle_completed_at": worker_record.get("last_cycle_completed_at"),
+        "last_cycle_status": worker_record.get("last_cycle_status"),
+        "last_cycle_pairs_checked": worker_record.get("last_cycle_pairs_checked"),
         "paper_trading_enabled": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true",
         "scalp_mode": False,
         "strategy": "15m_1h_momentum",
