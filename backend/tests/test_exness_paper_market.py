@@ -57,6 +57,7 @@ class ExnessPaperMarketDataTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_candle_history_is_cached_between_scans(self):
         client = FakeExnessClient()
+        client.get_candles.return_value = client.get_candles.return_value * 2
         market = ExnessPaperMarketData(client=client)
         first = await market.get_ohlc("XAU/USD", interval=15)
         second = await market.get_ohlc("XAU/USD", interval=15)
