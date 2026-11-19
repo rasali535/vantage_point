@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from paper_trading.autopilot import _market_error_summary, _worker_lease_diagnostic, _worker_owner
+from paper_trading.autopilot import _market_error_summary, _worker_identity, _worker_lease_diagnostic, _worker_owner
 
 
 class MarketDataDiagnosticsTests(unittest.TestCase):
@@ -35,6 +35,15 @@ class MarketDataDiagnosticsTests(unittest.TestCase):
         self.assertFalse(details["owner_matches_this_worker"])
         self.assertNotIn("owner", details)
         self.assertNotIn("another-worker-secret-id", str(details))
+        self.assertEqual(details["worker_identity"], None)
+
+    def test_worker_identity_contains_platform_fields_without_owner_secret(self):
+        identity = _worker_identity()
+        self.assertIn("service_id", identity)
+        self.assertIn("instance_id", identity)
+        self.assertIn("deploy_commit", identity)
+        self.assertEqual(len(identity["process_id"]), 12)
+        self.assertNotIn(_worker_owner, str(identity))
 
 
 if __name__ == "__main__":

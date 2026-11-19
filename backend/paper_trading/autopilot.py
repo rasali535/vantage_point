@@ -384,6 +384,16 @@ async def _dispatch_external_push(db, notif: dict) -> None:
                 pass
 
 
+def _worker_identity() -> dict:
+    """Return non-secret platform identity to tie the singleton lease to its process."""
+    return {
+        "service_id": os.getenv("RENDER_SERVICE_ID", "unknown"),
+        "instance_id": os.getenv("RENDER_INSTANCE_ID", "unknown"),
+        "deploy_commit": os.getenv("RENDER_GIT_COMMIT", "unknown"),
+        "process_id": _worker_owner[:12],
+    }
+
+
 def _worker_lease_diagnostic(db, lease: dict | None, now: datetime) -> dict:
     """Describe a lease conflict without logging its owner identifier or secrets."""
     expires_at = lease.get("expires_at") if lease else None
@@ -396,6 +406,7 @@ def _worker_lease_diagnostic(db, lease: dict | None, now: datetime) -> dict:
         "lease_expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else "missing_or_invalid",
         "lease_expiry_active": bool(isinstance(expires_at, datetime) and expires_at > now),
         "owner_matches_this_worker": bool(lease and lease.get("owner") == _worker_owner),
+        "worker_identity": lease.get("worker_identity") if lease else None,
     }
 
 
@@ -405,13 +416,14 @@ async def _acquire_worker_lease(db) -> bool:
     expires = now + timedelta(seconds=600)
     fields = {
         "owner": _worker_owner,
+        "worker_identity": _worker_identity(),
         "expires_at": expires,
         "heartbeat_at": now,
         "status": "running",
     }
     try:
         await db.paper_autopilot_worker.insert_one({"_id": "singleton", **fields})
-        logger.info("paper_autopilot_worker_lease_acquired database=%s method=insert", getattr(db, "name", "unknown"))
+        logger.info("paper_autopilot_worker_lease_acquired database=%s method=insert identity=%s", getattr(db, "name", "unknown"), _worker_identity())
         return True
     except DuplicateKeyError:
         pass
@@ -428,7 +440,7 @@ async def _acquire_worker_lease(db) -> bool:
     )
     acquired = bool(lease and lease.get("owner") == _worker_owner)
     if acquired:
-        logger.info("paper_autopilot_worker_lease_acquired database=%s method=renew", getattr(db, "name", "unknown"))
+        logger.info("paper_autopilot_worker_lease_acquired database=%s method=renew identity=%s", getattr(db, "name", "unknown"), _worker_identity())
     else:
         existing = await db.paper_autopilot_worker.find_one({"_id": "singleton"})
         details = _worker_lease_diagnostic(db, existing, now)
@@ -1180,8 +1192,8 @@ async def _worker_loop() -> None:
     last_keepalive: float = 0.0
     db = None
     logger.info(
-        "paper_autopilot_worker_started monitor_interval_seconds=%s scan_interval_seconds=%s",
-        monitor_interval, scan_interval,
+        "paper_autopilot_worker_started monitor_interval_seconds=%s scan_interval_seconds=%s identity=%s",
+        monitor_interval, scan_interval, _worker_identity(),
     )
     try:
         while True:
