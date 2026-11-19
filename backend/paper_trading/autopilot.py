@@ -6,6 +6,7 @@ adapter and never calls a private exchange endpoint.
 import asyncio
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_DOWN
@@ -101,6 +102,18 @@ def configured_pairs() -> list[str]:
     ):
         raise PaperTradeError("The paper autopilot accepts 1–25 Forex or USD-quoted spot pairs only.")
     return pairs
+
+
+def _market_error_summary(exc: Exception) -> str:
+    """Return a short, credential-safe market-data diagnostic for logs/history."""
+    message = " ".join(str(exc).split())
+    message = re.sub(
+        r"(?i)\b(authorization|access[_ -]?token|refresh[_ -]?token|token|secret|signature|password|api[_ -]?key|account[_ -]?id)\b\s*[:=]\s*[^,;\s]+",
+        r"\1=[redacted]",
+        message,
+    )
+    message = re.sub(r"(?i)\bbearer\s+[^\s,;]+", "Bearer [redacted]", message)
+    return message[:240] or "No error detail supplied."
 
 
 def calculate_spot_quantity(
@@ -1029,23 +1042,46 @@ async def run_autopilot_cycle(db=None) -> dict:
                 )
         sem = asyncio.Semaphore(6)
 
+        async def _load_market_request(pair: str, request: str, awaitable):
+            try:
+                return await awaitable, None
+            except Exception as exc:
+                detail = _market_error_summary(exc)
+                logger.warning(
+                    "paper_market_data_request_failed pair=%s request=%s error_type=%s reason=%s",
+                    pair, request, type(exc).__name__, detail,
+                )
+                return None, (request, type(exc).__name__, detail)
+
         async def _load_pair_data(pair: str):
             async with sem:
-                try:
-                    ticker, candles_15m, candles_1h = await asyncio.gather(
-                        _market.get_ticker(pair),
-                        _market.get_ohlc(pair, interval=15),
-                        _market.get_ohlc(pair, interval=60),
-                    )
-                    return pair, ticker, candles_15m, candles_1h, None
-                except Exception as exc:
-                    return pair, None, None, None, exc
+                ticker_result, m15_result, h1_result = await asyncio.gather(
+                    _load_market_request(pair, "ticker", _market.get_ticker(pair)),
+                    _load_market_request(pair, "M15", _market.get_ohlc(pair, interval=15)),
+                    _load_market_request(pair, "H1", _market.get_ohlc(pair, interval=60)),
+                )
+                ticker, ticker_error = ticker_result
+                candles_15m, m15_error = m15_result
+                candles_1h, h1_error = h1_result
+                errors = [error for error in (ticker_error, m15_error, h1_error) if error]
+                return pair, ticker, candles_15m, candles_1h, errors
 
         loaded = await asyncio.gather(*(_load_pair_data(pair) for pair in pairs))
         held_items, candidates, failed = [], [], []
-        for pair, ticker, candles_15m, candles_1h, error in loaded:
-            if error is not None or ticker is None or candles_15m is None or candles_1h is None:
-                failed.append(pair)
+        for pair, ticker, candles_15m, candles_1h, errors in loaded:
+            if errors or ticker is None or candles_15m is None or candles_1h is None:
+                details = "; ".join(
+                    f"{request}: {error_type} — {detail}"
+                    for request, error_type, detail in errors
+                )
+                if not details:
+                    missing = [
+                        name for name, value in (
+                            ("ticker", ticker), ("M15", candles_15m), ("H1", candles_1h)
+                        ) if value is None
+                    ]
+                    details = f"Missing response: {', '.join(missing)}."
+                failed.append((pair, details))
             elif pair in account.get("positions", {}):
                 held_items.append((pair, ticker, candles_15m, candles_1h))
             elif portfolio_gate.get("approved"):
@@ -1054,7 +1090,7 @@ async def run_autopilot_cycle(db=None) -> dict:
                     candidates.append((signal.confidence, pair, ticker, candles_15m, candles_1h))
 
         results.extend({"pair":pair,"decision":"SKIPPED",
-            "reason":"15m/1h market data unavailable; no trade attempted."} for pair in failed)
+            "reason":f"Market data unavailable; no trade attempted. {details}"} for pair, details in failed)
         for pair, _, _, _ in held_items:
             results.append({"pair":pair,"decision":"HOLD",
                 "reason":"Existing momentum position is protected by its ATR stop and 2R target."})
