@@ -49,7 +49,10 @@ class PartialTickSnapshotTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_refresh_records_freshness_only_for_received_instruments(self):
         class Client:
+            requested = None
+
             async def get_ticks(self, instruments):
+                self.requested = list(instruments)
                 return [{
                     "instrument": "EURUSD",
                     "bid": 1.08,
@@ -58,8 +61,9 @@ class PartialTickSnapshotTests(unittest.IsolatedAsyncioTestCase):
                 }]
 
         provider = ExnessPaperMarketData(client=Client())
-        await provider.refresh_ticks(["EUR/USD", "GBP/USD"])
+        await provider.refresh_ticks(["EUR/USD", "GBP/USD", "USD/JPY"])
 
+        self.assertEqual(provider._client.requested, ["EURUSD", "GBPUSD"])
         self.assertIn("EURUSD", provider._tick_refreshed_at)
         self.assertNotIn("GBPUSD", provider._tick_refreshed_at)
         self.assertIn("EURUSD", provider._ticks)
