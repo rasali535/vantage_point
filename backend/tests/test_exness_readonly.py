@@ -3,12 +3,12 @@ import hashlib
 import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
-from markets.providers.exness import ExnessConfigurationError, ExnessReadOnlyClient, _base_url, _load_private_key
+from markets.providers.exness import ExnessAPIError, ExnessConfigurationError, ExnessReadOnlyClient, _base_url, _load_private_key
 
 
 class ExnessReadOnlyTests(unittest.TestCase):
