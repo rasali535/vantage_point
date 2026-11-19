@@ -55,6 +55,15 @@ class ExnessPaperMarketDataTests(unittest.IsolatedAsyncioTestCase):
             "XAUUSD", timeframe="M1", count=120, price_type="both"
         )
 
+    async def test_candle_history_is_cached_between_scans(self):
+        client = FakeExnessClient()
+        client.get_candles.return_value = client.get_candles.return_value * 2
+        market = ExnessPaperMarketData(client=client)
+        first = await market.get_ohlc("XAU/USD", interval=15)
+        second = await market.get_ohlc("XAU/USD", interval=15)
+        self.assertEqual(first, second)
+        client.get_candles.assert_awaited_once_with("XAUUSD", timeframe="M15", count=120, price_type="both")
+
     async def test_fails_closed_for_symbols_outside_initial_exness_allowlist(self):
         market = ExnessPaperMarketData(client=FakeExnessClient())
         with self.assertRaises(ValueError):

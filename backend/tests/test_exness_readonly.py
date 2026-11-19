@@ -3,12 +3,12 @@ import hashlib
 import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
-from markets.providers.exness import ExnessConfigurationError, ExnessReadOnlyClient, _base_url, _load_private_key
+from markets.providers.exness import ExnessAPIError, ExnessConfigurationError, ExnessReadOnlyClient, _base_url, _load_private_key
 
 
 class ExnessReadOnlyTests(unittest.TestCase):
@@ -123,6 +123,27 @@ class ExnessReadOnlyTests(unittest.TestCase):
             with self.assertRaises(ExnessConfigurationError):
                 ExnessReadOnlyClient()
 
+
+    def test_rate_limit_cooldown_blocks_followup_calls(self):
+        import asyncio
+        import httpx
+        key = Ed25519PrivateKey.generate()
+        seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+        public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        env = {"EXN_API_KEY":"exnsk-test","EXN_PRIVATE_KEY":(seed + public).hex(),"EXN_ACCOUNT_ID":"123456","EXN_DISCOVERY_BASE_URL":"https://gateway.example","EXN_READ_ONLY":"true"}
+        with patch.dict(os.environ, env, clear=False):
+            client = ExnessReadOnlyClient()
+        fake_client = AsyncMock()
+        fake_client.get = AsyncMock(return_value=httpx.Response(429, headers={"Retry-After":"120"}))
+        class ClientContext:
+            async def __aenter__(self): return fake_client
+            async def __aexit__(self, *args): return False
+        with patch("httpx.AsyncClient", return_value=ClientContext()):
+            with self.assertRaisesRegex(ExnessAPIError, "HTTP 429"):
+                asyncio.run(client._get_json("https://gateway.example", "/test"))
+            with self.assertRaisesRegex(ExnessAPIError, "cooldown active"):
+                asyncio.run(client._get_json("https://gateway.example", "/test"))
+        fake_client.get.assert_awaited_once()
 
 if __name__ == "__main__":
     unittest.main()
