@@ -1250,9 +1250,13 @@ async def autopilot_status(db) -> dict:
     state = await db.paper_runtime.find_one({"_id": "autopilot"}) or {"enabled": False}
     worker_record = await db.paper_autopilot_worker.find_one({"_id": "singleton"}) or {}
     worker_expires = worker_record.get("expires_at")
+    # PyMongo decodes BSON UTC datetimes as naive values by default. Compare
+    # them only after normalizing to UTC-aware datetimes.
+    if isinstance(worker_expires, datetime) and worker_expires.tzinfo is None:
+        worker_expires = worker_expires.replace(tzinfo=timezone.utc)
     worker_lease_active = bool(
         worker_record.get("owner")
-        and worker_expires
+        and isinstance(worker_expires, datetime)
         and worker_expires > _utcnow()
     )
     return {
