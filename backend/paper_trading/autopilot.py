@@ -232,10 +232,10 @@ async def _record_event(db, event: dict) -> None:
             pnl_val = event.get("realized_pnl_usd")
             ev_type = str(event.get("event_type", "paper_fill"))
             if side_up == "BUY":
-                title = f"⚡ Scalp BUY Opened: {pair_name}"
+                title = f"📈 Momentum BUY Opened: {pair_name}"
                 body = (
                     f"Bought {event.get('quantity')} {pair_name} @ ${event.get('fill_price')} "
-                    f"({event.get('timeframe', '1m/5m')} scalp · Stop ${event.get('stop_loss', 'auto')} · Target ${event.get('take_profit', 'auto')})"
+                    f"({event.get('timeframe', '15m/1h')} momentum · Stop ${event.get('stop_loss', 'auto')} · Target ${event.get('take_profit', 'auto')})"
                 )
                 ntype = "buy"
             elif pnl_val is not None and float(pnl_val) >= 0:
@@ -1188,8 +1188,6 @@ async def autopilot_status(db) -> dict:
         "worker_running": _worker_task is not None and not _worker_task.done(),
         "paper_trading_enabled": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true",
         "scalp_mode": False,
-        "strategy": "15m_1h_momentum",
-        "timeframes": ["15m", "1h"],
         "strategy": "15m_1h_momentum",
         "timeframes": ["15m", "1h"],
         "monitor_interval_seconds": max(5, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "10")))),
