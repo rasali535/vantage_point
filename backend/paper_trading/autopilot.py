@@ -31,6 +31,7 @@ from paper_trading.engine import (
     simulate_order,
 )
 from risk.engine import DeterministicRiskEngine, RiskPolicy
+from paper_trading.momentum_strategy import evaluate_momentum
 
 logger = logging.getLogger(__name__)
 D = Decimal
@@ -419,36 +420,9 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
             if val is not None and val > 0:
                 prices[p] = val
 
-    # Multi-tier dynamic profit-locking & trend trailing stop:
-    # 1. At +0.12% gain: moves stop to Breakeven+ (+0.04% covers round-trip fees, zero-risk trade).
-    # 2. At +0.35% gain: locks in guaranteed profit (+0.18% above entry).
-    # 3. At +0.80%+: trails smoothly at 0.35% behind market price to capture large trend extensions.
+    # Medium-duration momentum positions retain their original ATR stop and 2R target.
+    # Do not apply scalp-era percentage locks that prematurely close trend winners.
     stops_ratcheted = False
-    for pair, pos in working.get("positions", {}).items():
-        mark = prices.get(pair)
-        if mark is None or mark <= 0:
-            continue
-        avg_entry = D(str(pos.get("average_entry", "0")))
-        if avg_entry <= 0:
-            continue
-        current_stop = D(str(pos["stop_loss"])) if pos.get("stop_loss") else D("0")
-        gain_pct = (mark - avg_entry) / avg_entry * D("100")
-        new_stop = None
-        if gain_pct >= D("0.80"):
-            candidate = (mark * D("0.9965")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
-            if candidate > current_stop and candidate < mark:
-                new_stop = candidate
-        elif gain_pct >= D("0.35"):
-            candidate = (avg_entry * D("1.0018")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
-            if candidate > current_stop and candidate < mark:
-                new_stop = candidate
-        elif gain_pct >= D("0.12"):
-            candidate = (avg_entry * D("1.0004")).quantize(D("0.00000001"), rounding=ROUND_DOWN)
-            if candidate > current_stop and candidate < mark:
-                new_stop = candidate
-        if new_stop is not None:
-            pos["stop_loss"] = str(new_stop)
-            stops_ratcheted = True
 
     equity = account_equity(working, prices)
     peak = max(D(str(account.get("peak_equity", equity))), equity)
@@ -915,6 +889,70 @@ async def _execute_signal(
     return {"pair": pair, "decision": "HOLD", "reason": "No compatible open position for this signal.", "analysis": analysis}
 
 
+async def _execute_momentum_signal(db, account: dict, pair: str, ticker: dict,
+                                  candles_15m: list, candles_1h: list,
+                                  portfolio: PortfolioRiskSnapshot,
+                                  portfolio_prices: dict[str, Decimal]) -> dict:
+    """Execute only confirmed 15m/1h long momentum signals in paper mode."""
+    if account.get("positions", {}).get(pair):
+        return {"pair": pair, "decision": "HOLD", "reason": "Existing position is managed by its ATR stop and 2R target."}
+    signal = evaluate_momentum(candles_15m, candles_1h)
+    if signal.action != TradeAction.BUY:
+        return {"pair": pair, "decision": "HOLD", "reason": signal.rationale, "timeframe": "15m+1h"}
+    floor = D(os.getenv("PAPER_AUTOTRADING_MIN_CONFIDENCE", "0.65"))
+    if not D("0.5") <= floor <= D("1") or D(str(signal.confidence)) < floor:
+        return {"pair": pair, "decision": "HOLD", "reason": "Momentum confidence threshold not met."}
+    if signal.stop_distance is None or signal.target_distance is None:
+        return {"pair": pair, "decision": "HOLD", "reason": "ATR stop/target unavailable."}
+    cooldown = reentry_cooldown_remaining(account.get("orders", []), pair)
+    if cooldown > 0:
+        return {"pair": pair, "decision": "HOLD", "reason": f"Re-entry cooldown active for {cooldown}s.", "cooldown_remaining_seconds": cooldown}
+    policy = _active_risk_policy()
+    max_open = min(3, max(1, int(os.getenv("PAPER_AUTOTRADING_MAX_OPEN_POSITIONS", "3"))))
+    if portfolio.open_positions >= max_open:
+        return {"pair": pair, "decision": "HOLD", "reason": f"Portfolio position limit reached ({max_open})."}
+    try:
+        exposure_limit = D(os.getenv("PAPER_AUTOTRADING_MAX_GROSS_EXPOSURE_PCT", "60"))
+        position_limit = D(os.getenv("PAPER_AUTOTRADING_MAX_POSITION_PCT", "20"))
+    except Exception:
+        return {"pair": pair, "decision": "HOLD", "reason": "Invalid portfolio allocation configuration."}
+    if not exposure_limit.is_finite() or not position_limit.is_finite() or exposure_limit <= 0 or position_limit <= 0:
+        return {"pair": pair, "decision": "HOLD", "reason": "Portfolio allocation limits must be positive."}
+    price = D(str(ticker["last"]))
+    if price <= 0:
+        return {"pair": pair, "decision": "HOLD", "reason": "Invalid market price."}
+    from paper_trading.engine import simulation_settings
+    fee, slip_bps = simulation_settings()
+    entry = price * (D("1") + slip_bps / D("10000"))
+    stop_distance, target_distance = D(str(signal.stop_distance)), D(str(signal.target_distance))
+    stop, target = entry - stop_distance, entry + target_distance
+    if stop <= 0 or target <= entry:
+        return {"pair": pair, "decision": "HOLD", "reason": "Invalid ATR stop/target geometry."}
+    gross_limit = min(D("60"), exposure_limit)
+    exposure = _portfolio_exposure_usd(account, portfolio_prices)
+    headroom = portfolio.equity * gross_limit / D("100") - exposure
+    max_pair_pct = min(D("20"), position_limit)
+    budget = min(D(str(account["cash"])) * D("0.995"), portfolio.equity * max_pair_pct / D("100"), headroom)
+    if budget < D("5"):
+        return {"pair": pair, "decision": "HOLD", "reason": "Available cash or exposure headroom is below $5."}
+    quantity = calculate_spot_quantity(portfolio.equity, budget, entry, stop, policy.max_trade_risk_pct * D("0.995"), fee)
+    if quantity <= 0 or quantity * entry < D("2"):
+        return {"pair": pair, "decision": "HOLD", "reason": "Risk-sized quantity below minimum notional."}
+    updated, fill = simulate_order(account, pair=pair, side="BUY", quantity=quantity,
+        reference_price=price, idempotency_key=f"autopilot:momentum-entry:{pair}:{uuid.uuid4().hex}",
+        stop_loss_price=stop, take_profit_price=target,
+        risk_engine=DeterministicRiskEngine(policy), portfolio_prices={**portfolio_prices, pair: price})
+    saved = await _save_account(db, account, updated)
+    analysis = {"timeframe":"15m+1h","confidence":signal.confidence,"atr_15m":signal.atr,
+        "stop_distance":signal.stop_distance,"target_distance":signal.target_distance,"rationale":signal.rationale}
+    await _record_event(db, {**fill,"event_type":"momentum_trade_entry","conviction_tier":"15M_1H_MOMENTUM",
+        "timeframe":"15m+1h","strategy_confidence":str(signal.confidence),
+        "strategy_rationale":signal.rationale[:1000],"technical_analysis":analysis,
+        "stop_loss":str(stop),"take_profit":str(target)})
+    return {"pair":pair,"decision":"BUY","timeframe":"15m+1h","conviction":"15M_1H_MOMENTUM",
+        "fill":fill,"account_version":saved.get("version"),"analysis":analysis}
+
+
 def _opportunity_score(pair: str, ticker: dict, candles_5m: list, candles_1m: list | None = None) -> float:
     """Rank 1m & 5m scalping opportunities with priority for Metals and fast movers."""
     try:
@@ -937,7 +975,7 @@ def _opportunity_score(pair: str, ticker: dict, candles_5m: list, candles_1m: li
 
 
 async def run_autopilot_cycle(db=None) -> dict:
-    """Run one autonomous 1m/5m scalping paper cycle; caller must hold the worker lease."""
+    """Run one autonomous 15m/1h momentum paper cycle; caller must hold the worker lease."""
     if os.getenv("PAPER_TRADING_ENABLED", "false").lower() != "true":
         return {"status": "disabled", "reason": "Paper trading is disabled."}
     if not os.getenv("PAPER_API_TOKEN") or not os.getenv("PAPER_INITIAL_BALANCE_USD"):
@@ -977,87 +1015,60 @@ async def run_autopilot_cycle(db=None) -> dict:
                     type(exc).__name__, str(exc)[:240],
                 )
         sem = asyncio.Semaphore(6)
-        candle_interval = int(os.getenv("PAPER_AUTOTRADING_CANDLE_INTERVAL", "5"))
 
-        async def _load_pair_data(p: str):
+        async def _load_pair_data(pair: str):
             async with sem:
                 try:
-                    t, c5 = await asyncio.gather(
-                        _market.get_ticker(p),
-                        _market.get_ohlc(p, interval=candle_interval),
+                    ticker, candles_15m, candles_1h = await asyncio.gather(
+                        _market.get_ticker(pair),
+                        _market.get_ohlc(pair, interval=15),
+                        _market.get_ohlc(pair, interval=60),
                     )
-                    try:
-                        c1 = await _market.get_ohlc(p, interval=1)
-                    except Exception:
-                        c1 = c5
-                    return p, t, c5, c1, None
+                    return pair, ticker, candles_15m, candles_1h, None
                 except Exception as exc:
-                    return p, None, None, None, exc
+                    return pair, None, None, None, exc
 
-        loaded = await asyncio.gather(*(_load_pair_data(p) for p in pairs))
-        # Prioritize: (1) currently held positions (to check 1m/5m scalp profit harvest or exits),
-        # then (2) Metals & fast-moving high-confidence 1m/5m BUY setups
-        held_items = []
-        candidate_by_cat: dict[str, list[tuple[float, str, dict, list, list]]] = {}
-        failed_items = []
-        for p, t, c5, c1, err in loaded:
-            if err is not None or t is None or c5 is None:
-                failed_items.append((p, err))
-                continue
-            if p in account.get("positions", {}):
-                held_items.append((p, t, c5, c1))
+        loaded = await asyncio.gather(*(_load_pair_data(pair) for pair in pairs))
+        held_items, candidates, failed = [], [], []
+        for pair, ticker, candles_15m, candles_1h, error in loaded:
+            if error is not None or ticker is None or candles_15m is None or candles_1h is None:
+                failed.append(pair)
+            elif pair in account.get("positions", {}):
+                held_items.append((pair, ticker, candles_15m, candles_1h))
             elif portfolio_gate.get("approved"):
-                score = _opportunity_score(p, t, c5, c1)
-                cat = instrument_category(p)
-                candidate_by_cat.setdefault(cat, []).append((score, p, t, c5, c1))
+                signal = evaluate_momentum(candles_15m, candles_1h)
+                if signal.action == TradeAction.BUY:
+                    candidates.append((signal.confidence, pair, ticker, candles_15m, candles_1h))
 
-        for cat_list in candidate_by_cat.values():
-            cat_list.sort(key=lambda x: x[0], reverse=True)
-
-        # Prioritize Metals first (Gold, Silver, Platinum, Copper), then the fastest movers
-        # across Indices, Forex, and Crypto sorted by velocity & confidence score.
-        ordered_candidates: list[tuple[str, dict, list, list]] = []
-        if candidate_by_cat.get("metals"):
-            top_metal = candidate_by_cat["metals"].pop(0)
-            if top_metal[0] > -900:
-                ordered_candidates.append((top_metal[1], top_metal[2], top_metal[3], top_metal[4]))
-        for cat in ("metals", "indices", "forex", "crypto"):
-            if candidate_by_cat.get(cat):
-                top = candidate_by_cat[cat].pop(0)
-                if top[0] > -900:
-                    ordered_candidates.append((top[1], top[2], top[3], top[4]))
-        remaining = [item for sub in candidate_by_cat.values() for item in sub]
-        remaining.sort(key=lambda x: x[0], reverse=True)
-        for _, p, t, c5, c1 in remaining:
-            ordered_candidates.append((p, t, c5, c1))
-
-        for p, _err in failed_items:
-            results.append({"pair": p, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})
-
-        for pair, ticker, candles_5m, candles_1m in [*held_items, *ordered_candidates]:
+        results.extend({"pair":pair,"decision":"SKIPPED",
+            "reason":"15m/1h market data unavailable; no trade attempted."} for pair in failed)
+        for pair, _, _, _ in held_items:
+            results.append({"pair":pair,"decision":"HOLD",
+                "reason":"Existing momentum position is protected by its ATR stop and 2R target."})
+        candidates.sort(key=lambda item:item[0], reverse=True)
+        for _, pair, ticker, candles_15m, candles_1h in candidates:
             try:
-                result = await _execute_signal(
-                    db, account, pair, ticker, candles_5m, portfolio, held_prices, candles_1m=candles_1m
-                )
-                results.append(result)
-                if result.get("decision") in {"BUY", "SELL"}:
-                    account = await _get_account(db)
-                    account, held_prices, _ = await _mark_and_protect_positions(db, account)
-                    portfolio = _portfolio_snapshot(account, held_prices)
-                    portfolio_gate = DeterministicRiskEngine(policy).evaluate_portfolio_state(
-                        daily_loss_pct=portfolio.daily_loss_pct,
-                        drawdown_pct=portfolio.drawdown_pct,
-                        open_positions=portfolio.open_positions,
-                        leverage=portfolio.leverage,
-                    )
+                account = await _get_account(db)
+                account, held_prices, _ = await _mark_and_protect_positions(db, account)
+                portfolio = _portfolio_snapshot(account, held_prices)
+                portfolio_gate = DeterministicRiskEngine(policy).evaluate_portfolio_state(
+                    daily_loss_pct=portfolio.daily_loss_pct, drawdown_pct=portfolio.drawdown_pct,
+                    open_positions=portfolio.open_positions, leverage=portfolio.leverage)
+                if not portfolio_gate.get("approved"):
+                    results.append({"pair":pair,"decision":"HOLD","reason":"Portfolio risk gate blocks new entries."})
+                    continue
+                results.append(await _execute_momentum_signal(
+                    db,account,pair,ticker,candles_15m,candles_1h,portfolio,held_prices))
             except Exception as exc:
-                logger.exception("paper_autopilot_pair_failed pair=%s error_type=%s", pair, type(exc).__name__)
-                results.append({"pair": pair, "decision": "SKIPPED", "reason": "Provider, analysis or paper execution failed closed."})
+                logger.exception("paper_momentum_pair_failed pair=%s error_type=%s",pair,type(exc).__name__)
+                results.append({"pair":pair,"decision":"SKIPPED",
+                    "reason":"Momentum analysis, risk gate or paper execution failed closed."})
 
     summary = {
         "status": "completed",
         "timestamp": _utcnow().isoformat(),
-        "scalp_timeframes": ["1m", "5m"],
+        "strategy": "15m_1h_momentum",
+        "timeframes": ["15m", "1h"],
         "pairs_checked": len(results),
         "results": results,
         "protective_exits": protective_exits,
@@ -1176,8 +1187,11 @@ async def autopilot_status(db) -> dict:
         "worker_configured": _enabled_by_operator(),
         "worker_running": _worker_task is not None and not _worker_task.done(),
         "paper_trading_enabled": os.getenv("PAPER_TRADING_ENABLED", "false").lower() == "true",
-        "scalp_mode": True,
-        "scalp_timeframes": ["1m", "5m"],
+        "scalp_mode": False,
+        "strategy": "15m_1h_momentum",
+        "timeframes": ["15m", "1h"],
+        "strategy": "15m_1h_momentum",
+        "timeframes": ["15m", "1h"],
         "monitor_interval_seconds": max(5, min(60, int(os.getenv("PAPER_AUTOTRADING_MONITOR_SECONDS", "10")))),
         "scan_interval_seconds": max(15, min(1800, int(os.getenv("PAPER_AUTOTRADING_SCAN_SECONDS", "30")))),
         "pairs": configured_pairs(),
