@@ -38,6 +38,7 @@ class FakeSocket:
 class PartialTickSnapshotTests(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_preserves_ticks_received_before_missing_symbol(self):
         client = object.__new__(ExnessReadOnlyClient)
+        client.account_id = "test-account"
         client.discover_access_point = AsyncMock(return_value="https://access.example")
         client._signed_get_headers = lambda path: {}
 
