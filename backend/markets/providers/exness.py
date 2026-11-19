@@ -236,7 +236,14 @@ class ExnessReadOnlyClient:
                     remaining = deadline - asyncio.get_running_loop().time()
                     if remaining <= 0:
                         break
-                    message = await asyncio.wait_for(socket.recv(), timeout=remaining)
+                    try:
+                        message = await asyncio.wait_for(socket.recv(), timeout=remaining)
+                    except asyncio.TimeoutError:
+                        # Exness can deliver a valid initial tick for one
+                        # instrument while another subscribed symbol has no
+                        # quote. Preserve the ticks already received instead
+                        # of discarding the whole snapshot on the final timeout.
+                        break
                     event = json.loads(message)
                     if not isinstance(event, dict):
                         continue
@@ -298,5 +305,14 @@ class ExnessReadOnlyClient:
                 detail = f"Exness WebSocket failed ({type(exc).__name__}: {safe_detail})."
             raise ExnessAPIError(detail) from exc
         if not ticks:
-            raise ExnessAPIError("Exness returned no initial ticks for the requested instruments.")
+            raise ExnessAPIError(
+                "Exness returned no initial ticks for the requested instruments "
+                f"within the subscription window ({', '.join(instruments)})."
+            )
+        missing = sorted(set(instruments) - set(ticks))
+        if missing:
+            logger.warning(
+                "exness_ticks_initial_partial received=%s missing=%s",
+                sorted(ticks), missing,
+            )
         return [ticks[symbol] for symbol in instruments if symbol in ticks]
