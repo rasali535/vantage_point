@@ -108,11 +108,11 @@ def _market_error_summary(exc: Exception) -> str:
     """Return a short, credential-safe market-data diagnostic for logs/history."""
     message = " ".join(str(exc).split())
     message = re.sub(
-        r"(?i)\\b(authorization|access[_ -]?token|refresh[_ -]?token|token|secret|signature|password|api[_ -]?key|account[_ -]?id)\\b\\s*[:=]\\s*[^,;\\s]+",
-        r"\\1=[redacted]",
+        r"(?i)\b(authorization|access[_ -]?token|refresh[_ -]?token|token|secret|signature|password|api[_ -]?key|account[_ -]?id)\b\s*[:=]\s*[^,;\s]+",
+        r"\1=[redacted]",
         message,
     )
-    message = re.sub(r"(?i)\\bbearer\\s+[^\\s,;]+", "Bearer [redacted]", message)
+    message = re.sub(r"(?i)\bbearer\s+[^\s,;]+", "Bearer [redacted]", message)
     return message[:240] or "No error detail supplied."
 
 
