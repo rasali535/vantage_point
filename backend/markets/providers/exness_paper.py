@@ -31,6 +31,8 @@ class ExnessPaperMarketData:
         # older cached XAUUSD/GBPUSD quote appear fresh.
         self._tick_refreshed_at: dict[str, float] = {}
         self._refresh_lock = asyncio.Lock()
+        self._candle_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+        self._candle_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     def _get_client(self) -> ExnessReadOnlyClient:
         if self._client is None:
@@ -152,9 +154,21 @@ class ExnessPaperMarketData:
     async def get_ohlc(self, pair: str, interval: int = 5) -> list[dict[str, Any]]:
         instrument = self.instrument_for_pair(pair)
         timeframe = "M1" if interval <= 1 else "M5" if interval <= 5 else "M15" if interval <= 15 else "H1"
-        candles = await self._get_client().get_candles(
-            instrument, timeframe=timeframe, count=120, price_type="both"
-        )
+        cache_key = (instrument, timeframe)
+        cache_ttl = 60.0 if timeframe == "M15" else 180.0 if timeframe == "H1" else 30.0
+        cached = self._candle_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and now - cached[0] < cache_ttl:
+            return [dict(item) for item in cached[1]]
+        lock = self._candle_locks.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            cached = self._candle_cache.get(cache_key)
+            now = time.monotonic()
+            if cached and now - cached[0] < cache_ttl:
+                return [dict(item) for item in cached[1]]
+            candles = await self._get_client().get_candles(
+                instrument, timeframe=timeframe, count=120, price_type="both"
+            )
         parsed = [
             normalized
             for candle in candles
@@ -168,4 +182,5 @@ class ExnessPaperMarketData:
                 f"Exness returned only {len(parsed)} valid {timeframe} candles for {instrument}; "
                 f"at least {minimum} are required for the momentum indicators."
             )
-        return parsed
+        self._candle_cache[cache_key] = (time.monotonic(), parsed)
+        return [dict(item) for item in parsed]
