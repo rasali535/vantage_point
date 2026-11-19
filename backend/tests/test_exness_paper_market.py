@@ -77,5 +77,13 @@ class ExnessPaperMarketDataTests(unittest.IsolatedAsyncioTestCase):
             await market.get_ohlc("EUR/USD", interval=5)
 
 
+    async def test_candle_history_is_cached_between_scans(self):
+        client = FakeExnessClient()
+        market = ExnessPaperMarketData(client=client)
+        first = await market.get_ohlc("XAU/USD", interval=15)
+        second = await market.get_ohlc("XAU/USD", interval=15)
+        self.assertEqual(first, second)
+        client.get_candles.assert_awaited_once_with("XAUUSD", timeframe="M15", count=120, price_type="both")
+
 if __name__ == "__main__":
     unittest.main()
