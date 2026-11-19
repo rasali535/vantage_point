@@ -384,6 +384,21 @@ async def _dispatch_external_push(db, notif: dict) -> None:
                 pass
 
 
+def _worker_lease_diagnostic(db, lease: dict | None, now: datetime) -> dict:
+    """Describe a lease conflict without logging its owner identifier or secrets."""
+    expires_at = lease.get("expires_at") if lease else None
+    if isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return {
+        "database": getattr(db, "name", "unknown"),
+        "lease_found": bool(lease),
+        "lease_status": lease.get("status", "unknown") if lease else "missing",
+        "lease_expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else "missing_or_invalid",
+        "lease_expiry_active": bool(isinstance(expires_at, datetime) and expires_at > now),
+        "owner_matches_this_worker": bool(lease and lease.get("owner") == _worker_owner),
+    }
+
+
 async def _acquire_worker_lease(db) -> bool:
     """Acquire or renew the singleton worker lease; persist heartbeat state for diagnosis."""
     now = _utcnow()
@@ -396,6 +411,7 @@ async def _acquire_worker_lease(db) -> bool:
     }
     try:
         await db.paper_autopilot_worker.insert_one({"_id": "singleton", **fields})
+        logger.info("paper_autopilot_worker_lease_acquired database=%s method=insert", getattr(db, "name", "unknown"))
         return True
     except DuplicateKeyError:
         pass
@@ -410,7 +426,14 @@ async def _acquire_worker_lease(db) -> bool:
         {"$set": fields},
         return_document=ReturnDocument.AFTER,
     )
-    return bool(lease and lease.get("owner") == _worker_owner)
+    acquired = bool(lease and lease.get("owner") == _worker_owner)
+    if acquired:
+        logger.info("paper_autopilot_worker_lease_acquired database=%s method=renew", getattr(db, "name", "unknown"))
+    else:
+        existing = await db.paper_autopilot_worker.find_one({"_id": "singleton"})
+        details = _worker_lease_diagnostic(db, existing, now)
+        logger.warning("paper_autopilot_worker_lease_conflict %s", details)
+    return acquired
 
 
 async def _release_worker_lease(db) -> None:

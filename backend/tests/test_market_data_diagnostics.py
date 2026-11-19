@@ -1,6 +1,9 @@
 import unittest
 
-from paper_trading.autopilot import _market_error_summary
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+from paper_trading.autopilot import _market_error_summary, _worker_lease_diagnostic, _worker_owner
 
 
 class MarketDataDiagnosticsTests(unittest.TestCase):
@@ -17,6 +20,21 @@ class MarketDataDiagnosticsTests(unittest.TestCase):
     def test_market_error_summary_is_bounded_and_handles_empty_messages(self):
         self.assertEqual(_market_error_summary(RuntimeError("")), "No error detail supplied.")
         self.assertLessEqual(len(_market_error_summary(RuntimeError("x" * 500))), 240)
+
+    def test_worker_lease_diagnostic_reports_database_and_active_conflict_without_owner(self):
+        now = datetime.now(timezone.utc)
+        lease = {
+            "owner": "another-worker-secret-id",
+            "status": "running",
+            "expires_at": (now + timedelta(minutes=5)).replace(tzinfo=None),
+        }
+        details = _worker_lease_diagnostic(SimpleNamespace(name="vantage_point"), lease, now)
+        self.assertEqual(details["database"], "vantage_point")
+        self.assertTrue(details["lease_found"])
+        self.assertTrue(details["lease_expiry_active"])
+        self.assertFalse(details["owner_matches_this_worker"])
+        self.assertNotIn("owner", details)
+        self.assertNotIn("another-worker-secret-id", str(details))
 
 
 if __name__ == "__main__":
