@@ -214,7 +214,7 @@ class ExnessReadOnlyClient:
         self, instrument: str, timeframe: str = "M15", count: int = 100, price_type: str = "both"
     ) -> list[dict]:
         """Read historical bid/ask candles; this method cannot mutate account state."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone
         from urllib.parse import urlencode
 
         allowed_timeframes = {"S1", "S5", "S15", "M1", "M3", "M5", "M10", "M15", "M30", "H1", "H2", "H4", "D1", "W1", "MN"}
@@ -226,13 +226,15 @@ class ExnessReadOnlyClient:
             raise ExnessConfigurationError("Candle count must be between 1 and 500.")
         if price_type not in {"bid", "ask", "both"}:
             raise ExnessConfigurationError("Candle price_type must be bid, ask or both.")
-        seconds = {"S1": 1, "S5": 5, "S15": 15, "M1": 60, "M3": 180, "M5": 300, "M10": 600, "M15": 900, "M30": 1800, "H1": 3600, "H2": 7200, "H4": 14400, "D1": 86400, "W1": 604800, "MN": 2592000}[timeframe]
-        start = datetime.now(timezone.utc) - timedelta(seconds=seconds * count)
+        # Exness count is bidirectional: a negative value backfills candles
+        # before `from`. Anchor at now so closed-market gaps do not consume
+        # the requested history window (e.g. weekends for M15/H1).
+        anchor = datetime.now(timezone.utc)
         query = urlencode({
             "instrument": instrument,
             "timeframe": timeframe,
-            "from": start.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            "count": count,
+            "from": anchor.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "count": -count,
             "price_type": price_type,
         })
         access_point = await self.discover_access_point()
