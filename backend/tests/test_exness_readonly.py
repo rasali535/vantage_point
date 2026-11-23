@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import unittest
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch, AsyncMock
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -117,6 +118,42 @@ class ExnessReadOnlyTests(unittest.TestCase):
             asyncio.run(client.get_candles("XAUUSD", "TICK", 100))
         with self.assertRaises(ExnessConfigurationError):
             asyncio.run(client.get_candles("XAUUSD", "M15", 501))
+
+    def test_candle_request_backfills_requested_number_from_current_time(self):
+        import asyncio
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock
+
+        key = Ed25519PrivateKey.generate()
+        seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+        public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        env = {
+            "EXN_API_KEY": "exnsk-test",
+            "EXN_PRIVATE_KEY": (seed + public).hex(),
+            "EXN_ACCOUNT_ID": "123456",
+            "EXN_DISCOVERY_BASE_URL": "https://gateway.example",
+            "EXN_READ_ONLY": "true",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            client = ExnessReadOnlyClient()
+
+        candles = [{"time": f"2026-11-20T00:{i:02d}:00+00:00"} for i in range(60)]
+        client.discover_access_point = AsyncMock(return_value="https://access.example")
+        client._get_json = AsyncMock(return_value={"candles": candles})
+        before = datetime.now(timezone.utc)
+        result = asyncio.run(client.get_candles("EURUSD", "M15", 100))
+        after = datetime.now(timezone.utc)
+
+        self.assertEqual(len(result), 60)
+        client._get_json.assert_awaited_once()
+        requested_url = client._get_json.await_args.args[1]
+        params = parse_qs(urlsplit(requested_url).query)
+        self.assertEqual(params["count"], ["-100"])
+        self.assertEqual(params["instrument"], ["EURUSD"])
+        self.assertEqual(params["timeframe"], ["M15"])
+        anchor = datetime.fromisoformat(params["from"][0].replace("Z", "+00:00"))
+        self.assertGreaterEqual(anchor, before)
+        self.assertLessEqual(anchor, after)
 
     def test_client_refuses_non_readonly_mode(self):
         with patch.dict(os.environ, {"EXN_READ_ONLY": "false"}, clear=False):
