@@ -59,23 +59,14 @@ class TechnicalAnalystAgent:
                     trend = "uptrend"
                 elif fast < slow:
                     trend = "downtrend"
-            if trend == "uptrend" and rsi is not None:
-                if rsi <= 72:
-                    signal = TradeAction.BUY
-                elif rsi > 75:
-                    signal = TradeAction.SELL
-            elif trend == "downtrend" and rsi is not None:
-                if rsi < 33 and len(closes) >= 2 and closes[-1] >= closes[-2]:
-                    signal = TradeAction.BUY
-                elif rsi >= 28:
-                    signal = TradeAction.SELL
-                else:
-                    signal = TradeAction.BUY
-            elif rsi is not None:
-                if rsi < 38:
-                    signal = TradeAction.BUY
-                elif rsi > 68:
-                    signal = TradeAction.SELL
+
+            # This execution stack is long-only. Oversold RSI during a
+            # downtrend is not a reversal confirmation and must not create
+            # a BUY proposal; overbought/oversold readings in a sideways
+            # market are likewise insufficient on their own.
+            if trend == "uptrend" and rsi is not None and rsi <= 72:
+                signal = TradeAction.BUY
+
             evidence = [f"EMA9={fast:.4f}", f"EMA21={slow:.4f}"] if fast and slow else []
             if rsi is not None:
                 evidence.append(f"RSI14={rsi:.2f}")
