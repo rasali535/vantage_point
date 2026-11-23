@@ -152,7 +152,9 @@ class ExnessReadOnlyTests(unittest.TestCase):
         self.assertEqual(params["instrument"], ["EURUSD"])
         self.assertEqual(params["timeframe"], ["M15"])
         anchor = datetime.fromisoformat(params["from"][0].replace("Z", "+00:00"))
-        self.assertGreaterEqual(anchor, before)
+        # The API timestamp is serialized to milliseconds, so allow the
+        # sub-millisecond precision intentionally dropped by the request.
+        self.assertGreaterEqual(anchor, before.replace(microsecond=0))
         self.assertLessEqual(anchor, after)
 
     def test_client_refuses_non_readonly_mode(self):
