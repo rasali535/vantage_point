@@ -17,6 +17,7 @@ from pymongo.errors import DuplicateKeyError
 from agents.contracts import PortfolioRiskSnapshot, TradeAction
 from agents.kraken import KrakenAgent
 from markets.providers.exness_paper import ExnessPaperMarketData
+from markets.providers.twelve_data import TwelveDataPaperMarketData
 from agents.orchestrator import TradingOrchestrator
 from agents.technical_analyst import TechnicalAnalystAgent
 from agents.whipsaw_protection import whipsaw_protection
@@ -44,9 +45,11 @@ def _build_market_provider():
     provider = os.getenv("PAPER_MARKET_DATA_PROVIDER", "yahoo").strip().lower()
     if provider == "exness":
         return ExnessPaperMarketData()
+    if provider == "twelve_data":
+        return TwelveDataPaperMarketData()
     if provider in {"yahoo", "kraken", "global_macro"}:
         return KrakenAgent()
-    raise RuntimeError("PAPER_MARKET_DATA_PROVIDER must be exness or yahoo.")
+    raise RuntimeError("PAPER_MARKET_DATA_PROVIDER must be exness, twelve_data, or yahoo.")
 
 
 _market = _build_market_provider()
