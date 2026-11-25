@@ -131,6 +131,24 @@ class PaperTradingTests(unittest.TestCase):
         self.assertFalse(exits[0]["exchange_order_submitted"])
         self.assertNotIn("BTC/USD", updated["positions"])
 
+    def test_protective_exit_preserves_original_entry_context(self):
+        account, _ = self.buy(key="buy-with-context")
+        context = {
+            "entry_id": "buy-with-context",
+            "strategy_confidence": "0.69",
+            "strategy_rationale": "M15/H1 bullish alignment",
+            "technical_analysis": {"timeframe": "15m+1h", "rsi_14": 58.2},
+            "timeframe": "15m+1h",
+        }
+        account["positions"]["BTC/USD"].update(context)
+        updated, exits = evaluate_protective_triggers(account, {"BTC/USD": "48000"})
+        self.assertEqual(len(exits), 1)
+        for key, value in context.items():
+            self.assertEqual(exits[0][key], value)
+            self.assertEqual(updated["orders"][-1][key], value)
+        self.assertEqual(exits[0]["event_type"], "protective_exit")
+        self.assertEqual(exits[0]["triggered_by"], "stop_loss")
+
     def test_take_profit_trigger_simulates_exit(self):
         account, _ = simulate_order(
             self.account, pair="BTC/USD", side="BUY", quantity="0.01",

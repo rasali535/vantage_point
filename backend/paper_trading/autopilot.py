@@ -176,7 +176,12 @@ async def _record_event(db, event: dict) -> None:
     try:
         await db.paper_autopilot_events.insert_one(record)
     except DuplicateKeyError:
-        return
+        # The canonical event may already exist while a downstream projection
+        # failed on the first attempt. Continue so idempotent projections can retry.
+        pass
+    except Exception:
+        logger.exception("paper_event_persist_failed event_id=%s", record_id)
+        raise
 
     ledger_col = getattr(db, "trading_ledger", None)
     if ledger_col is not None and event.get("pair") and event.get("side"):
@@ -202,28 +207,48 @@ async def _record_event(db, event: dict) -> None:
                 "time": timestamp,
             })
         except Exception:
-            pass
+            logger.exception("paper_ledger_projection_failed event_id=%s", record_id)
 
     boardroom_col = getattr(db, "boardroom_history", None)
     if boardroom_col is not None and event.get("pair") and event.get("side"):
         try:
+            event_type = str(event.get("event_type", "paper_fill"))
+            exit_reason = str(event.get("triggered_by") or "")
+            display_action = (
+                "STOP_LOSS" if exit_reason == "stop_loss" else
+                "TAKE_PROFIT" if exit_reason == "take_profit" else
+                str(event["side"]).upper()
+            )
+            strategy = {
+                "action": display_action,
+                "rationale": event.get("strategy_rationale") or (
+                    f"{display_action.replace('_', ' ').title()} exit for {event['pair']} @ {event.get('fill_price')}."
+                    if exit_reason else
+                    f"Autonomous {event['side']} execution on {event['pair']} @ {event.get('fill_price')}."
+                ),
+            }
+            if event.get("strategy_confidence") is not None:
+                strategy["confidence"] = float(event["strategy_confidence"])
             await boardroom_col.insert_one({
                 "_id": f"paper_boardroom:{record_id}",
                 "pair": event["pair"],
                 "category": instrument_category(event["pair"]),
                 "timestamp": timestamp,
-                "strategy": {
-                    "action": str(event["side"]).upper(),
-                    "confidence": float(event.get("strategy_confidence") or 0.72),
-                    "rationale": event.get("strategy_rationale") or f"Autonomous {event['side']} execution on {event['pair']} @ {event.get('fill_price')}.",
-                },
+                "event_type": event_type,
+                "entry_id": event.get("entry_id"),
+                "side": str(event["side"]).upper(),
+                "fill_price": event.get("fill_price"),
+                "quantity": event.get("quantity"),
+                "realized_pnl_usd": event.get("realized_pnl_usd"),
+                "triggered_by": exit_reason or None,
+                "strategy": strategy,
                 "technical_analysis": event.get("technical_analysis") or {},
-                "risk_assessment": {"summary": "Approved by DeterministicRiskEngine"},
-                "execution_assessment": {"status": "paper_simulated", "execution_enabled": False},
+                "risk_assessment": {"summary": "Deterministic paper risk controls", "approved": True},
+                "execution_assessment": {"status": "paper_simulated", "execution_enabled": False, "exchange_order_submitted": False},
                 "execution_status": "paper_simulated",
             })
         except Exception:
-            pass
+            logger.exception("paper_boardroom_projection_failed event_id=%s", record_id)
 
     audit_col = getattr(db, "audit_logs", None)
     if audit_col is not None and event.get("pair") and event.get("side"):
@@ -515,6 +540,11 @@ async def _mark_and_protect_positions(db, account: dict) -> tuple[dict, dict[str
                 **fill,
                 "event_type": "protective_exit",
                 "triggered_by": fill.get("triggered_by"),
+                "entry_id": fill.get("entry_id"),
+                "strategy_confidence": fill.get("strategy_confidence"),
+                "strategy_rationale": fill.get("strategy_rationale"),
+                "technical_analysis": fill.get("technical_analysis") or {},
+                "timeframe": fill.get("timeframe"),
             })
         return saved, prices, triggered
 
@@ -1006,9 +1036,20 @@ async def _execute_momentum_signal(db, account: dict, pair: str, ticker: dict,
         reference_price=price, idempotency_key=f"autopilot:momentum-entry:{pair}:{uuid.uuid4().hex}",
         stop_loss_price=stop, take_profit_price=target,
         risk_engine=DeterministicRiskEngine(policy), portfolio_prices={**portfolio_prices, pair: price})
-    saved = await _save_account(db, account, updated)
     analysis = {"timeframe":"15m+1h","confidence":signal.confidence,"atr_15m":signal.atr,
         "stop_distance":signal.stop_distance,"target_distance":signal.target_distance,"rationale":signal.rationale}
+    entry_context = {
+        "entry_id": fill["id"],
+        "strategy_confidence": str(signal.confidence),
+        "strategy_rationale": signal.rationale[:1000],
+        "technical_analysis": analysis,
+        "timeframe": "15m+1h",
+    }
+    updated["positions"][pair].update(entry_context)
+    updated["orders"][-1].update(entry_context)
+    updated["orders"][-1]["event_type"] = "momentum_trade_entry"
+    updated["orders"][-1]["conviction_tier"] = "15M_1H_MOMENTUM"
+    saved = await _save_account(db, account, updated)
     await _record_event(db, {**fill,"event_type":"momentum_trade_entry","conviction_tier":"15M_1H_MOMENTUM",
         "timeframe":"15m+1h","strategy_confidence":str(signal.confidence),
         "strategy_rationale":signal.rationale[:1000],"technical_analysis":analysis,
