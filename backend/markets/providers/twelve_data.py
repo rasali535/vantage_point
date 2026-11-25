@@ -5,6 +5,7 @@ account, order, position, or paper-ledger dependencies.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -197,6 +198,7 @@ class TwelveDataPaperMarketData:
         self._client = client
         self._ticker_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._candle_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+        self._candle_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._clock = time.monotonic
 
     def _get_client(self) -> TwelveDataReadOnlyClient:
@@ -210,25 +212,29 @@ class TwelveDataPaperMarketData:
         cached = self._ticker_cache.get(symbol)
         if cached and now - cached[0] < 10.0:
             return dict(cached[1])
-        quote = await self._get_client().get_quote(symbol)
-        last = float(quote["last"])
+
+        # Reuse the latest M15 candle close as the paper mark. This avoids a
+        # separate quote API credit for every symbol during each scan.
+        candles = await self.get_ohlc(symbol, interval=15)
+        latest = candles[-1]
+        last = float(latest["close"])
         ticker = {
             "pair": symbol,
-            "bid": float(quote["bid"]),
-            "ask": float(quote["ask"]),
+            "bid": last,
+            "ask": last,
             "last": last,
             "high_24h": last,
             "low_24h": last,
             "volume_24h": 0.0,
             "open": last,
             "change_percent": 0.0,
-            "timestamp": quote.get("timestamp"),
-            "source": "twelve_data_read_only",
+            "timestamp": latest.get("timestamp"),
+            "source": "twelve_data_m15_close",
             "provider": "twelve_data",
             "read_only": True,
             "execution_enabled": False,
         }
-        self._ticker_cache[symbol] = (now, ticker)
+        self._ticker_cache[symbol] = (self._clock(), ticker)
         return dict(ticker)
 
     async def get_ohlc(self, pair: str, interval: int = 15) -> list[dict[str, Any]]:
@@ -241,23 +247,30 @@ class TwelveDataPaperMarketData:
         cached = self._candle_cache.get(key)
         if cached and now - cached[0] < 60.0:
             return [dict(item) for item in cached[1]]
-        candles = await self._get_client().get_candles(symbol, timeframe, 120)
-        if len(candles) < 50:
-            raise TwelveDataAPIError(
-                f"Twelve Data returned only {len(candles)} valid {timeframe} candles; "
-                "at least 50 are required for the momentum indicators."
-            )
-        normalized = [
-            {
-                "timestamp": item["timestamp"],
-                "open": item["open"],
-                "high": item["high"],
-                "low": item["low"],
-                "close": item["close"],
-                "vwap": item["vwap"],
-                "volume": item["volume"],
-            }
-            for item in candles
-        ]
-        self._candle_cache[key] = (now, normalized)
-        return [dict(item) for item in normalized]
+
+        lock = self._candle_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            now = self._clock()
+            cached = self._candle_cache.get(key)
+            if cached and now - cached[0] < 60.0:
+                return [dict(item) for item in cached[1]]
+            candles = await self._get_client().get_candles(symbol, timeframe, 120)
+            if len(candles) < 50:
+                raise TwelveDataAPIError(
+                    f"Twelve Data returned only {len(candles)} valid {timeframe} candles; "
+                    "at least 50 are required for the momentum indicators."
+                )
+            normalized = [
+                {
+                    "timestamp": item["timestamp"],
+                    "open": item["open"],
+                    "high": item["high"],
+                    "low": item["low"],
+                    "close": item["close"],
+                    "vwap": item["vwap"],
+                    "volume": item["volume"],
+                }
+                for item in candles
+            ]
+            self._candle_cache[key] = (self._clock(), normalized)
+            return [dict(item) for item in normalized]

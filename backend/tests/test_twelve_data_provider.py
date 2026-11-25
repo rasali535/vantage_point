@@ -149,12 +149,13 @@ class TwelveDataPaperFeedTests(unittest.TestCase):
         candles = asyncio.run(feed.get_ohlc("XAU/USD", interval=15))
         again = asyncio.run(feed.get_ohlc("XAU/USD", interval=15))
         self.assertEqual(ticker["last"], 1.15)
-        self.assertEqual(ticker["source"], "twelve_data_read_only")
+        self.assertEqual(ticker["source"], "twelve_data_m15_close")
         self.assertTrue(ticker["read_only"])
         self.assertFalse(ticker["execution_enabled"])
         self.assertEqual(len(candles), 60)
         self.assertEqual(candles[0]["timestamp"], 1)
         self.assertEqual(client.candle_calls, [("XAU/USD", "15min", 120)])
+        self.assertEqual(client.quote_calls, 0)
         self.assertEqual(len(again), 60)
 
     def test_paper_feed_maps_hourly_interval_and_rejects_other_timeframes(self):
