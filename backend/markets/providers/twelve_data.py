@@ -110,8 +110,8 @@ class TwelveDataReadOnlyClient:
         payload = await self._get_json("quote", {"symbol": symbol})
         price_value = payload.get("price") or payload.get("close")
         price = _decimal(price_value, "quote price")
-        bid = _decimal(payload.get("bid", price), "bid")
-        ask = _decimal(payload.get("ask", price), "ask")
+        bid = _decimal((payload.get("bid") or price), "bid")
+        ask = _decimal((payload.get("ask") or price), "ask")
         if ask < bid:
             raise TwelveDataAPIError("Twelve Data returned a crossed quote.")
         raw_time = payload.get("timestamp") or payload.get("datetime")
