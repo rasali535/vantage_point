@@ -9,6 +9,7 @@ from markets.providers.twelve_data import (
     TwelveDataAPIError,
     TwelveDataConfigurationError,
     TwelveDataReadOnlyClient,
+    TwelveDataPaperMarketData,
 )
 
 
@@ -116,6 +117,60 @@ class TwelveDataReadOnlyTests(unittest.TestCase):
         self.assertEqual(quote["last"], 1.27)
         self.assertTrue(quote["read_only"])
         self.assertFalse(quote["execution_enabled"])
+
+
+class TwelveDataPaperFeedTests(unittest.TestCase):
+    class FakeClient:
+        def __init__(self, candle_count=60):
+            self.quote_calls = 0
+            self.candle_calls = []
+            self.candle_count = candle_count
+
+        async def get_quote(self, symbol):
+            self.quote_calls += 1
+            return {
+                "symbol": symbol, "bid": 1.1, "ask": 1.2, "last": 1.15,
+                "timestamp": "2026-11-25T10:15:00+00:00",
+                "provider": "twelve_data", "read_only": True, "execution_enabled": False,
+            }
+
+        async def get_candles(self, symbol, interval, outputsize):
+            self.candle_calls.append((symbol, interval, outputsize))
+            return [
+                {"timestamp": i + 1, "open": 1.1, "high": 1.2, "low": 1.0,
+                 "close": 1.15, "vwap": 1.116, "volume": 0.0}
+                for i in range(self.candle_count)
+            ]
+
+    def test_paper_feed_exposes_engine_contract_and_caches_requests(self):
+        client = self.FakeClient()
+        feed = TwelveDataPaperMarketData(client=client)
+        ticker = asyncio.run(feed.get_ticker("XAU/USD"))
+        candles = asyncio.run(feed.get_ohlc("XAU/USD", interval=15))
+        again = asyncio.run(feed.get_ohlc("XAU/USD", interval=15))
+        self.assertEqual(ticker["last"], 1.15)
+        self.assertEqual(ticker["source"], "twelve_data_read_only")
+        self.assertTrue(ticker["read_only"])
+        self.assertFalse(ticker["execution_enabled"])
+        self.assertEqual(len(candles), 60)
+        self.assertEqual(candles[0]["timestamp"], 1)
+        self.assertEqual(client.candle_calls, [("XAU/USD", "15min", 120)])
+        self.assertEqual(len(again), 60)
+
+    def test_paper_feed_maps_hourly_interval_and_rejects_other_timeframes(self):
+        client = self.FakeClient()
+        feed = TwelveDataPaperMarketData(client=client)
+        candles = asyncio.run(feed.get_ohlc("EUR/USD", interval=60))
+        self.assertEqual(len(candles), 60)
+        self.assertEqual(client.candle_calls, [("EUR/USD", "1h", 120)])
+        with self.assertRaises(TwelveDataConfigurationError):
+            asyncio.run(feed.get_ohlc("EUR/USD", interval=5))
+
+    def test_paper_feed_fails_closed_on_insufficient_history(self):
+        client = self.FakeClient(candle_count=49)
+        feed = TwelveDataPaperMarketData(client=client)
+        with self.assertRaisesRegex(TwelveDataAPIError, "at least 50"):
+            asyncio.run(feed.get_ohlc("GBP/USD", interval=15))
 
 
 if __name__ == "__main__":

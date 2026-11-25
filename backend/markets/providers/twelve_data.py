@@ -187,3 +187,77 @@ class TwelveDataReadOnlyClient:
         if not candles:
             raise TwelveDataAPIError("Twelve Data returned no valid candles.")
         return candles
+
+
+class TwelveDataPaperMarketData:
+    """Paper-engine interface backed exclusively by Twelve Data read-only GETs."""
+
+    def __init__(self, client: TwelveDataReadOnlyClient | None = None) -> None:
+        import time
+        self._client = client
+        self._ticker_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._candle_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+        self._clock = time.monotonic
+
+    def _get_client(self) -> TwelveDataReadOnlyClient:
+        if self._client is None:
+            self._client = TwelveDataReadOnlyClient()
+        return self._client
+
+    async def get_ticker(self, pair: str) -> dict[str, Any]:
+        symbol = TwelveDataReadOnlyClient.validate_symbol(pair)
+        now = self._clock()
+        cached = self._ticker_cache.get(symbol)
+        if cached and now - cached[0] < 10.0:
+            return dict(cached[1])
+        quote = await self._get_client().get_quote(symbol)
+        last = float(quote["last"])
+        ticker = {
+            "pair": symbol,
+            "bid": float(quote["bid"]),
+            "ask": float(quote["ask"]),
+            "last": last,
+            "high_24h": last,
+            "low_24h": last,
+            "volume_24h": 0.0,
+            "open": last,
+            "change_percent": 0.0,
+            "timestamp": quote.get("timestamp"),
+            "source": "twelve_data_read_only",
+            "provider": "twelve_data",
+            "read_only": True,
+            "execution_enabled": False,
+        }
+        self._ticker_cache[symbol] = (now, ticker)
+        return dict(ticker)
+
+    async def get_ohlc(self, pair: str, interval: int = 15) -> list[dict[str, Any]]:
+        symbol = TwelveDataReadOnlyClient.validate_symbol(pair)
+        timeframe = "15min" if interval == 15 else "1h" if interval == 60 else None
+        if timeframe is None:
+            raise TwelveDataConfigurationError("Twelve Data paper feed supports only M15 and H1.")
+        key = (symbol, timeframe)
+        now = self._clock()
+        cached = self._candle_cache.get(key)
+        if cached and now - cached[0] < 60.0:
+            return [dict(item) for item in cached[1]]
+        candles = await self._get_client().get_candles(symbol, timeframe, 120)
+        if len(candles) < 50:
+            raise TwelveDataAPIError(
+                f"Twelve Data returned only {len(candles)} valid {timeframe} candles; "
+                "at least 50 are required for the momentum indicators."
+            )
+        normalized = [
+            {
+                "timestamp": item["timestamp"],
+                "open": item["open"],
+                "high": item["high"],
+                "low": item["low"],
+                "close": item["close"],
+                "vwap": item["vwap"],
+                "volume": item["volume"],
+            }
+            for item in candles
+        ]
+        self._candle_cache[key] = (now, normalized)
+        return [dict(item) for item in normalized]
