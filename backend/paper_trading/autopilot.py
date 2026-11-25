@@ -176,7 +176,9 @@ async def _record_event(db, event: dict) -> None:
     try:
         await db.paper_autopilot_events.insert_one(record)
     except DuplicateKeyError:
-        return
+        # The canonical event may already exist while a downstream projection
+        # failed on the first attempt. Continue so idempotent projections can retry.
+        pass
     except Exception:
         logger.exception("paper_event_persist_failed event_id=%s", record_id)
         raise
@@ -1044,6 +1046,9 @@ async def _execute_momentum_signal(db, account: dict, pair: str, ticker: dict,
         "timeframe": "15m+1h",
     }
     updated["positions"][pair].update(entry_context)
+    updated["orders"][-1].update(entry_context)
+    updated["orders"][-1]["event_type"] = "momentum_trade_entry"
+    updated["orders"][-1]["conviction_tier"] = "15M_1H_MOMENTUM"
     saved = await _save_account(db, account, updated)
     await _record_event(db, {**fill,"event_type":"momentum_trade_entry","conviction_tier":"15M_1H_MOMENTUM",
         "timeframe":"15m+1h","strategy_confidence":str(signal.confidence),
