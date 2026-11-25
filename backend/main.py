@@ -13,6 +13,7 @@ import routes.trading
 import routes.chat
 import routes.exness
 import routes.exness_market_data
+import routes.twelve_data_market_data
 from database import close_database, ping_database
 from paper_trading.autopilot import start_worker, stop_worker
 
@@ -91,6 +92,7 @@ app.include_router(routes.trading.router, prefix="/api/trading", tags=["Trading"
 app.include_router(routes.chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(routes.exness.router, prefix="/api/exness", tags=["Exness Read Only"])
 app.include_router(routes.exness_market_data.router, prefix="/api/exness/market-data", tags=["Exness Read-Only Market Data"])
+app.include_router(routes.twelve_data_market_data.router, prefix="/api/twelve-data/market-data", tags=["Twelve Data Read-Only Market Data"])
 
 
 @app.get("/")
