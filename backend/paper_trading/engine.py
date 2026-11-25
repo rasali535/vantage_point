@@ -375,6 +375,12 @@ def evaluate_protective_triggers(
         )
         fill["triggered_by"] = reason
         fill["trigger_price"] = str(stop if reason == "stop_loss" else target)
+        # Carry immutable entry provenance into the close so alerts never invent
+        # technical indicators or confidence for a protective exit.
+        for field in ("entry_id", "strategy_confidence", "strategy_rationale", "technical_analysis", "timeframe"):
+            if position.get(field) is not None:
+                fill[field] = deepcopy(position[field])
+        fill["event_type"] = "protective_exit"
         # Replace the just-created order with the enriched protective-trigger record.
         updated["orders"][-1] = {k: v for k, v in fill.items() if k != "duplicate"}
         triggered.append(fill)
