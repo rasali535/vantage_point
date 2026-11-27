@@ -42,7 +42,7 @@ _worker_task: asyncio.Task | None = None
 _cycle_lock = asyncio.Lock()
 _worker_owner = uuid.uuid4().hex
 def _build_market_provider():
-    provider = os.getenv("PAPER_MARKET_DATA_PROVIDER", "yahoo").strip().lower()
+    provider = os.getenv("PAPER_MARKET_DATA_PROVIDER", "exness").strip().lower()
     if provider == "exness":
         return ExnessPaperMarketData()
     if provider == "twelve_data":
