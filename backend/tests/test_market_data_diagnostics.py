@@ -1,12 +1,27 @@
 import unittest
+import os
+from unittest.mock import patch
+
+from markets.providers.exness_paper import ExnessPaperMarketData
+from markets.providers.twelve_data import TwelveDataPaperMarketData
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from paper_trading.autopilot import _market_error_summary, _worker_identity, _worker_lease_diagnostic, _worker_owner
+from paper_trading.autopilot import _build_market_provider, _market_error_summary, _worker_identity, _worker_lease_diagnostic, _worker_owner
 
 
 class MarketDataDiagnosticsTests(unittest.TestCase):
+    def test_exness_is_the_default_paper_market_data_provider(self):
+        with patch.dict(os.environ, {}, clear=True):
+            provider = _build_market_provider()
+        self.assertIsInstance(provider, ExnessPaperMarketData)
+
+    def test_twelve_data_remains_available_only_as_explicit_override(self):
+        with patch.dict(os.environ, {"PAPER_MARKET_DATA_PROVIDER": "twelve_data"}, clear=True):
+            provider = _build_market_provider()
+        self.assertIsInstance(provider, TwelveDataPaperMarketData)
+
     def test_market_error_summary_keeps_status_and_redacts_credentials(self):
         detail = _market_error_summary(RuntimeError(
             "Exness API returned HTTP 401; access_token=super-secret Bearer abc123"
