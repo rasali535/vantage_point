@@ -34,6 +34,7 @@ from paper_trading.engine import (
 )
 from risk.engine import DeterministicRiskEngine, RiskPolicy
 from paper_trading.momentum_strategy import evaluate_momentum
+from paper_trading.market_hours import market_entry_block_reason
 
 logger = logging.getLogger(__name__)
 D = Decimal
@@ -990,6 +991,9 @@ async def _execute_momentum_signal(db, account: dict, pair: str, ticker: dict,
     """Execute only confirmed 15m/1h long momentum signals in paper mode."""
     if account.get("positions", {}).get(pair):
         return {"pair": pair, "decision": "HOLD", "reason": "Existing position is managed by its ATR stop and 2R target."}
+    market_block = market_entry_block_reason(pair, ticker, candles_15m, candles_1h)
+    if market_block:
+        return {"pair": pair, "decision": "SKIPPED", "reason": f"New entry blocked: {market_block}"}
     signal = evaluate_momentum(candles_15m, candles_1h)
     if signal.action != TradeAction.BUY:
         return {"pair": pair, "decision": "HOLD", "reason": signal.rationale, "timeframe": "15m+1h"}
