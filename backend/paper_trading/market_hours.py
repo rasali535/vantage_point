@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, timedelta
 from typing import Any
 
 
@@ -80,7 +80,10 @@ def market_entry_block_reason(
     now: datetime | None = None,
 ) -> str | None:
     """Return a reason to block a new entry, or None when session/data gates pass."""
-    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    now = now.astimezone(timezone.utc)
     pair = pair.strip().upper()
     try:
         buffer_minutes = int(os.getenv("PAPER_ENTRY_CLOSE_BUFFER_MINUTES", "60"))
@@ -99,7 +102,7 @@ def market_entry_block_reason(
     # for metals because holiday schedules can shorten their Friday session.
     friday_close = time(19, 45) if metal else time(21, 0)
     friday_cutoff = (datetime.combine(now.date(), friday_close, tzinfo=timezone.utc)
-                     - __import__("datetime").timedelta(minutes=buffer_minutes))
+                     - timedelta(minutes=buffer_minutes))
     if now.weekday() == 4 and now >= friday_cutoff:
         return f"Friday entry cutoff reached ({buffer_minutes}m before the conservative {friday_close.strftime('%H:%M')} UTC close)."
     if now.weekday() == 5:
